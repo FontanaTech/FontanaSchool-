@@ -120,6 +120,8 @@ export function createTutor(host: HTMLElement, options: { ambient?: boolean } = 
   motion.addEventListener('change', preference);
 
   const ambientFrames: FrameId[] = ambient ? ['rest-look-right', 'rest-tilt'] : [];
+  // Mostrar el avatar desde el primer instante; la precarga continúa en segundo plano.
+  show(IDLE_FRAME);
   const ready = ensure([IDLE_FRAME, ...BLINK.map((step) => step.frame), ...ambientFrames]).then(() => {
     if (destroyed) return;
     if (current === null) show(IDLE_FRAME);

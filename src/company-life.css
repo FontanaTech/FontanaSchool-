@@ -35,15 +35,15 @@
 .alb-stage { position: relative; width: 100%; max-width: 1280px; margin: 0 auto; padding: clamp(36px, 6vw, 72px) 0; outline-offset: 6px; }
 .alb-stage:focus-visible { outline: 3px solid #d4af37; border-radius: 12px; }
 .alb-stage.is-immersive { overflow: hidden; border-radius: 26px; }
-.alb-book { position: relative; container-type: inline-size; width: 100%; aspect-ratio: 1.5 / 1; transition: transform 1s cubic-bezier(.5, 0, .2, 1); }
+.alb-book { position: relative; container-type: inline-size; width: 100%; aspect-ratio: 1.5 / 1; transition: transform .72s cubic-bezier(.22, .61, .36, 1); }
 .alb-book[data-state='front'] { transform: translateX(-25%) scale(1.2); }
 .alb-book[data-state='back'] { transform: translateX(25%) scale(1.2); }
 /* Sombra en el suelo: el libro se apoya sobre la mesa. */
 .alb-book::after { content: ''; position: absolute; z-index: -2; left: 5%; right: 5%; bottom: -2.5%; height: 5%; border-radius: 50%; background: #3d261238; filter: blur(16px); }
 /* Grosor de las hojas: el libro abierto se ve como un bloque de páginas. */
 .alb-book[data-state='open']::before { content: ''; position: absolute; z-index: -1; inset: 1.5% -0.5% -1.5%; border-radius: 10px; background: #efe4cd; box-shadow: 0 1px 0 #d6c49c, 0 2px 0 #efe4cd, 0 3px 0 #d6c49c, 0 4px 0 #efe4cd; }
-.alb-sheets { position: absolute; inset: 0; perspective: 2600px; }
-.alb-sheet { position: absolute; top: 0; left: 50%; width: 50%; height: 100%; transform-style: preserve-3d; transform-origin: left center; transition: transform .9s cubic-bezier(.5, 0, .2, 1); }
+.alb-sheets { position: absolute; inset: 0; perspective: 2600px; contain: layout paint; }
+.alb-sheet { position: absolute; top: 0; left: 50%; width: 50%; height: 100%; transform-style: preserve-3d; transform-origin: left center; transition: transform .8s cubic-bezier(.22, .61, .36, 1); }
 .alb-sheet.is-flipping { will-change: transform; }
 .alb-sheet.is-turned { transform: rotateY(-180deg); }
 .alb-face { position: absolute; inset: 0; overflow: hidden; backface-visibility: hidden; border-radius: 0 12px 12px 0; background: #fbf6ea; box-shadow: 0 8px 22px #3d26121a; }
@@ -53,7 +53,7 @@
 /* Sombra de giro: la hoja se oscurece al ponerse de canto, como papel que recibe la luz de lado. */
 .alb-face::before { content: ''; position: absolute; z-index: 6; inset: 0; pointer-events: none; opacity: 0; background: linear-gradient(90deg, #2a1019, #2a101933 42%, transparent 68%); }
 .alb-face.is-back::before { background: linear-gradient(270deg, #2a1019, #2a101933 42%, transparent 68%); }
-.alb-sheet.is-flipping .alb-face::before { animation: alb-page-shade .9s cubic-bezier(.5, 0, .2, 1); }
+.alb-sheet.is-flipping .alb-face::before { animation: alb-page-shade .8s cubic-bezier(.22, .61, .36, 1); }
 @keyframes alb-page-shade { 0%, 100% { opacity: 0; } 50% { opacity: .55; } }
 .alb-face.is-back::after { background: linear-gradient(270deg, #4a2c1440, transparent 13%); }
 
@@ -86,8 +86,8 @@
 .alb-media.is-coming { cursor: default; }
 .alb-media img { display: block; width: 100%; height: 100%; object-fit: cover; }
 /* Movimiento de cámara sobre la foto en la que se detiene el recorrido. */
-.alb-item.is-focus .alb-media img { animation: alb-kenburns 2800ms ease-out both; }
-@keyframes alb-kenburns { from { transform: scale(1); } to { transform: scale(1.06); } }
+.alb-item.is-focus .alb-media img { animation: alb-kenburns 2400ms cubic-bezier(.22, .61, .36, 1) both; }
+@keyframes alb-kenburns { from { transform: scale(1); } to { transform: scale(1.035); } }
 .alb-media:focus-visible { outline: 3px solid #d4af37; outline-offset: -4px; }
 .alb-item figcaption { display: grid; gap: 2px; padding: calc(var(--u) * 1) calc(var(--u) * .3) calc(var(--u) * 1.1); }
 .alb-item strong { color: #3a2c22; font: italic 500 calc(var(--u) * 1.6) / 1.25 Georgia, 'Times New Roman', serif; }
@@ -128,7 +128,10 @@
 .alb-vnav.is-prev { left: 14px; }
 .alb-vnav.is-next { right: 14px; }
 .alb-vnav:focus-visible { outline: 3px solid #d4af37; outline-offset: 2px; }
-.fontana-life-viewer-media { display: grid; place-items: center; min-height: 180px; }
+.fontana-life-viewer-media { position: relative; display: grid; place-items: center; min-height: 180px; }
+/* Indicador discreto mientras se decodifica la imagen ampliada; la anterior se mantiene al navegar. */
+.fontana-life-viewer-media.is-loading { min-height: min(60vh, 72vw); }
+.fontana-life-viewer-media.is-loading::after { content: ''; position: absolute; top: 50%; left: 50%; width: 30px; height: 30px; margin: -15px 0 0 -15px; border: 2px solid #ffffff3a; border-top-color: #f3dfae; border-radius: 50%; animation: life-loading .9s linear infinite; }
 .fontana-life-viewer-media :is(img, video) { display: block; width: 100%; max-width: 100%; max-height: calc(100dvh - 96px); object-fit: contain; }
 .fontana-life-viewer-caption { margin: 0; padding: 12px 70px 14px 20px; color: #eadcbf; font: 500 15px/1.4 Georgia, 'Times New Roman', serif; }
 .fontana-life-viewer-caption:empty { display: none; }
@@ -174,6 +177,9 @@
 .alb-hint { position: absolute; z-index: 7; left: 50%; bottom: clamp(26px, 4vw, 44px); margin: 0; padding: 9px 18px; border-radius: 999px; background: #2a1019e6; color: #fdf3d8; font: 500 13px/1 'Segoe UI', Arial, sans-serif; white-space: nowrap; opacity: 0; transform: translate(-50%, 8px); transition: opacity .4s ease, transform .4s ease; pointer-events: none; }
 .alb-hint.is-on { opacity: 1; transform: translate(-50%, 0); }
 
+/* La GPU solo prepara el libro mientras la cámara está activa; así no se mantiene costosa durante la espera. */
+.alb-stage.is-immersive .alb-book { will-change: transform; }
+
 /* Cierre suave: el álbum se funde y la portada bloqueada vuelve con una entrada breve. */
 .alb.is-closing { animation: alb-close .4s ease forwards; pointer-events: none; }
 @keyframes alb-close { to { opacity: 0; transform: scale(.97); } }
@@ -185,4 +191,5 @@
   .alb-progress i { transition: none; }
   .alb-sheet.is-flipping .alb-face::before { animation: none; }
   .alb.is-closing, .alb-gate.is-entering { animation: none; }
+  .fontana-life-viewer-media.is-loading::after { animation: none; }
 }

@@ -20,6 +20,13 @@ describe('mural visual de Fontana', () => {
     expect(() => parseLifeItems([moment, moment])).toThrow();
     expect(() => parseLifeItems([{ ...moment, kind: 'iframe' }])).toThrow();
   });
+  it('admite miniatura y dimensiones, y rechaza dimensiones no válidas', () => {
+    const [photo] = parseLifeItems([{ ...moment, src: '/vida-fontana/foto-full.webp', thumb: '/vida-fontana/foto-thumb.webp', width: 1024, height: 768, thumbWidth: 720, thumbHeight: 540 }]);
+    expect(photo).toMatchObject({ thumb: '/vida-fontana/foto-thumb.webp', width: 1024, thumbWidth: 720 });
+    // Sin miniatura propia, una foto reutiliza su archivo principal.
+    expect(parseLifeItems([{ ...moment, src: '/vida-fontana/foto.webp' }])[0].thumb).toBe('/vida-fontana/foto.webp');
+    for (const bad of [0, -1, 1.5, '1024']) expect(() => parseLifeItems([{ ...moment, width: bad }])).toThrow();
+  });
   it('conserva la descripción opcional de cada momento', () => {
     const entries = parseLifeItems([{ ...moment, caption: ' Un gran día ' }, { ...moment, id: 'video', kind: 'video' }]);
     expect(entries[0].caption).toBe('Un gran día');

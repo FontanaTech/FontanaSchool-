@@ -66,16 +66,16 @@ function openTab(tab: HTMLButtonElement): void {
   focusContent();
 }
 // Al terminar los pasos de una pestaña se abre la siguiente y aparece el botón para continuar.
-function chainTab(panelId: string, topic: string | undefined, next: HTMLButtonElement, label: string): void {
+function chainTab(panelId: string, topic: string | undefined, next: HTMLButtonElement, label: string, withAudio = false): void {
   const panel = element(panelId);
   const button = document.createElement('button');
   button.type = 'button'; button.className = 'primary security-continue'; button.hidden = true; button.textContent = label;
   button.addEventListener('click', () => openTab(next));
   panel.append(button);
-  mountSecuritySlider(panel, topic, () => { unlockTab(next); button.hidden = false; });
+  mountSecuritySlider(panel, topic, () => { unlockTab(next); button.hidden = false; }, withAudio);
 }
 chainTab('#policies', 'reglas y políticas de la compañía', securityTab, 'Continuar con la seguridad de la información →');
-chainTab('#security', undefined, principlesTab, 'Continuar con los principios de trabajo →');
+chainTab('#security', undefined, principlesTab, 'Continuar con los principios de trabajo →', true);
 tabs.forEach((tab, index) => {
   tab.addEventListener('click', () => selectTab(index));
   tab.addEventListener('keydown', (event: KeyboardEvent) => {

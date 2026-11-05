@@ -14,11 +14,35 @@
 - Los espacios sin archivo muestran un marcador elegante, sin simular fotos de la compañía.
 - Respeta la preferencia de movimiento reducido.
 
-## Añadir archivos
+## Añadir fotografías
 
-1. Copiar fotos o videos a `public/vida-fontana/`.
-2. Editar `public/vida-fontana/mural.json`. Cambiar `src: null` por una ruta como `"src": "/vida-fontana/quincena.webp"`, o añadir nuevos elementos con un `id` único. El orden del archivo es el orden del álbum.
-3. `title` se muestra en grande; `caption` (opcional) es la línea descriptiva. Para fotografías, `alt` describe la imagen para lectores de pantalla. Para videos, añadir `poster` (portada) y `captions` (subtítulos WebVTT) si existen.
+Las fotos se optimizan antes de publicarse: el álbum no sirve los originales pesados.
+
+1. Copiar el original (PNG o JPEG, a la resolución que tengas) a `media/vida-fontana/`. Esta carpeta es la fuente; **no** se publica.
+2. Ejecutar `npm run album:optimize`. El script (`scripts/vida-fontana/optimizar-album.mjs`, con `sharp`) genera en `public/vida-fontana/` dos derivados WebP por foto —`<id>-thumb.webp` (720 px, para las hojas) y `<id>-full.webp` (hasta 1920 px, para la vista ampliada y el zoom)— y `portada.webp` a partir de `portada.*`. Imprime el antes/después y, con `--manifest`, los metadatos (ancho, alto, nombres) listos para el JSON.
+3. Editar `public/vida-fontana/mural.json`: `src` apunta al `-full.webp` y `thumb` al `-thumb.webp`. Copia `width`/`height` (del `-full.webp`) y `thumbWidth`/`thumbHeight` (del `-thumb.webp`) tal como los imprime `--manifest`: `width`/`height` reservan el espacio de la vista ampliada y, comparando ambos pares, el álbum decide si al hacer zoom vale la pena subir del thumb al original (si el original no tiene más píxeles, no lo vuelve a descargar). El orden del archivo es el orden del álbum.
+4. `title` se muestra en grande; `caption` (opcional) es la línea descriptiva; `alt` describe la imagen para lectores de pantalla. `featured: true` ocupa una página completa.
+
+```json
+{
+  "id": "almuerzos-fin-de-mes",
+  "kind": "photo",
+  "title": "Almuerzos fin de mes",
+  "caption": "Compartimos un momento de encuentro.",
+  "alt": "Dos integrantes del equipo comparten un almuerzo en la oficina.",
+  "src": "/vida-fontana/almuerzos-fin-de-mes-full.webp",
+  "thumb": "/vida-fontana/almuerzos-fin-de-mes-thumb.webp",
+  "width": 768,
+  "height": 1024,
+  "thumbWidth": 720,
+  "thumbHeight": 960,
+  "featured": true
+}
+```
+
+## Añadir videos
+
+Copiar el MP4 (H.264) y su portada a `public/vida-fontana/` y añadir el elemento con `kind: "video"`, `poster` (portada WebP) y, si existen, `captions` (subtítulos WebVTT). Los videos no pasan por el script de optimización.
 
 ```json
 {
@@ -32,4 +56,4 @@
 }
 ```
 
-Usar `photo` o `video` en `kind`. Las rutas deben ser locales y comenzar por `/`. Se recomienda WebP/JPG de 1600 px de ancho (formato horizontal 16:9 luce mejor) y videos MP4 (H.264). No se modifica el avance ni se añade evaluación.
+Las rutas deben ser locales y comenzar por `/`. No se modifica el avance ni se añade evaluación.

@@ -1,5 +1,5 @@
 /* Tutor pixel art: la imagen nunca se deforma; solo respira y entra con pequeños desplazamientos. */
-.tutor { --tutor-width: clamp(170px, 18vw, 240px); position: relative; flex: none; width: var(--tutor-width); max-width: 100%; opacity: 0; transform: translateY(10px); transition: opacity .5s ease, transform .5s ease; pointer-events: none; user-select: none; }
+.tutor { --tutor-width: clamp(170px, 18vw, 240px); position: relative; flex: none; width: var(--tutor-width); max-width: 100%; opacity: 1; transform: none; transition: opacity .5s ease, transform .5s ease; pointer-events: none; user-select: none; }
 .tutor.is-ready { opacity: 1; transform: none; }
 .tutor-figure { position: relative; width: 100%; aspect-ratio: var(--tutor-ratio, 424 / 484); transform-origin: 50% 100%; animation: tutor-breathe 4.6s ease-in-out infinite;
   /* el torso termina en un corte recto: se disuelve en lugar de verse cortado */

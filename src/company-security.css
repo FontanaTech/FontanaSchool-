@@ -1,11 +1,19 @@
-/* Security shares the presentation of Principles; the future avatar is not mounted yet. */
+/* «Seguridad de la información» y «Reglas y políticas» comparten la presentación de «Principios de trabajo»
+   (escenario avatar + copy, lista lateral .step, bloque .detail-note), con avatar y audios propios de cada apartado. */
 #security.company-security, #policies.company-security { grid-template-columns: minmax(0, 1fr); gap: 24px; padding-top: 22px; }
 .company-security > * { min-width: 0; }
 .company-security .security-heading .eyebrow { margin: 0 0 10px; }
 .company-security .security-heading h3 { margin: 0; font-size: 28px; line-height: 1.35; font-weight: 600; }
 .company-security .security-stage { display: grid; grid-template-columns: auto 1fr; align-items: end; gap: 20px; }
-.company-security .security-avatar { width: clamp(150px, 16vw, 210px); margin: 0 0 -4px; align-self: end; -webkit-mask-image: linear-gradient(to bottom, #000 80%, transparent 100%); mask-image: linear-gradient(to bottom, #000 80%, transparent 100%); }
-.company-security .security-avatar img { display: block; width: 100%; height: auto; image-rendering: auto; }
+/* Avatar: estático en «Reglas y políticas»; en «Seguridad» se anima por fotogramas, con el mismo ancho que el tutor. */
+.company-security .security-avatar { position: relative; width: clamp(170px, 18vw, 240px); margin: 0 0 -4px; align-self: end; }
+/* Avatar estático (retrato con desvanecido inferior, igual que el tutor). */
+.company-security .security-avatar:not(.is-frames) img { display: block; width: 100%; height: auto; -webkit-mask-image: linear-gradient(to bottom, #000 80%, transparent 100%); mask-image: linear-gradient(to bottom, #000 80%, transparent 100%); }
+/* Avatar por fotogramas (Seguridad): lienzo cuadrado y transparente; los fotogramas se apilan y se alternan por
+   visibilidad (sin recargas ni parpadeo). El mismo lienzo evita saltos de posición o tamaño al cambiar de gesto. */
+.company-security .security-avatar.is-frames { aspect-ratio: 1; }
+.company-security .security-avatar__frame { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; visibility: hidden; }
+.company-security .security-avatar__frame.is-on { visibility: visible; }
 .company-security .security-stage .principle-copy { padding-bottom: 8px; }
 .company-security .security-stage h4 { margin: 10px 0 8px; }
 .company-security .security-explanation { margin-top: 12px; }
@@ -23,7 +31,16 @@
 .company-security .security-detail article { min-width: 0; }
 .company-security .security-detail h4 { margin: 10px 0 18px; color: #1f2a37; font-size: 25px; line-height: 1.4; }
 .company-security .security-detail h4:focus-visible { outline: 3px solid #d4af37; outline-offset: 4px; border-radius: 4px; }
-.company-security .security-explanation p { margin: 6px 0 0; color: #1f2a37; font-size: 16px; line-height: 1.75; }
+/* Misma jerarquía y estilo que el bloque «Esto es lo que explica el tutor» (.principle-narration p). */
+.company-security .security-explanation p { margin: 6px 0 0; color: var(--navy); font-size: 15px; line-height: 1.65; }
+/* Control de narración mínimo, igual que «Principios»: enlace de pausar/escuchar + estado. El <audio> va oculto. */
+.company-security .security-narration { display: flex; flex-direction: column; align-items: flex-start; }
+.company-security .security-narration audio { display: none; }
+.company-security .security-pause { align-self: flex-start; margin-top: 16px; padding: 8px 0; border: 0; background: none; color: var(--red); font: inherit; font-size: 14px; cursor: pointer; text-decoration: underline; text-underline-offset: 3px; }
+.company-security .security-pause:focus-visible { outline: 3px solid #d4af37; outline-offset: 3px; }
+.company-security .security-status { min-height: 1.4em; margin: 12px 0 0; color: var(--muted); font-size: 13px; line-height: 1.45; }
+/* Con movimiento reducido el avatar no se anima (se queda en el fotograma neutro); lo resuelve el componente
+   en JS: no arranca el bucle ni analiza el audio, pero la narración se oye igual. */
 @media(max-width:900px) { .company-security .security-slider { grid-template-columns: minmax(0,1fr); } }
 @media(max-width:600px) {
   .company-security .security-heading h3 { font-size: 24px; }

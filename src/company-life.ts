@@ -18,7 +18,7 @@ const ZOOM_MS = 1100;
 const HOLD_MS = 1700;
 const COVER_MS = 1600;
 const LOGO = '/imagenes/fontana-logo.webp';
-const COVER = '/vida-fontana/portada.jpg';
+const COVER = '/vida-fontana/portada.webp';
 // Curva suave para la cámara: entra y sale sin tirones.
 const EASE = 'cubic-bezier(.4, 0, .22, 1)';
 
@@ -27,11 +27,20 @@ function placeholder(kind: LifeItem['kind']): string {
 }
 
 function itemHtml(item: LifeItem, position: number): string {
-  const image = item.kind === 'photo' ? item.src : item.poster;
-  const preview = image ? `<img src="${escapar(image)}" alt="${item.kind === 'photo' ? escapar(item.alt) : ''}" decoding="async">` : placeholder(item.kind);
+  const preview = item.kind === 'photo' ? item.thumb : item.poster; // miniatura ligera en la hoja
+  // Solo se sube al original al enfocar si tiene más píxeles que la miniatura; si no, sería descargar
+  // un archivo del mismo tamaño sin ganar nitidez (las fotos verticales de ≤720 px ya no mejoran).
+  const sharper = item.kind === 'photo' && item.src && item.src !== preview
+    && item.width != null && item.thumbWidth != null && item.width > item.thumbWidth;
+  // Las hojas viven dentro de una escena 3D; lazy-loading nativo puede interpretarlas como fuera de pantalla.
+  // Por eso la miniatura se difiere con data-src y se carga desde showSpread cuando su hoja se acerca
+  // (la hoja fija el tamaño del marco, así que no hay salto al pintar). data-full carga el original al enfocarla.
+  const image = preview
+    ? `<img data-src="${escapar(preview)}"${sharper ? ` data-full="${escapar(item.src!)}"` : ''} alt="${item.kind === 'photo' ? escapar(item.alt) : ''}" decoding="async">`
+    : placeholder(item.kind);
   const media = item.src
-    ? `<button type="button" class="alb-media" data-album-open="${escapar(item.id)}" aria-label="${item.kind === 'video' ? 'Reproducir video' : 'Ampliar fotografía'}: ${escapar(item.title)}">${preview}${item.kind === 'video' ? `<span class="alb-play">${playIcon}</span>` : ''}</button>`
-    : `<div class="alb-media is-coming" role="img" aria-label="Espacio para ${item.kind === 'video' ? 'video' : 'fotografía'} pendiente de añadir">${preview}</div>`;
+    ? `<button type="button" class="alb-media" data-album-open="${escapar(item.id)}" aria-label="${item.kind === 'video' ? 'Reproducir video' : 'Ampliar fotografía'}: ${escapar(item.title)}">${image}${item.kind === 'video' ? `<span class="alb-play">${playIcon}</span>` : ''}</button>`
+    : `<div class="alb-media is-coming" role="img" aria-label="Espacio para ${item.kind === 'video' ? 'video' : 'fotografía'} pendiente de añadir">${image}</div>`;
   return `<figure class="alb-item is-${item.kind}${position % 2 ? ' is-b' : ''}" style="--tilt:${[-1.4, 1.1, -.8, 1.5][position % 4]}deg">${media}<figcaption><strong>${escapar(item.title)}</strong>${item.caption ? `<span>${escapar(item.caption)}</span>` : ''}</figcaption></figure>`;
 }
 
@@ -91,6 +100,14 @@ export async function mountCompanyLife(host: HTMLElement, manifestPath = '/vida-
   const stage = () => host.querySelector<HTMLElement>('[data-album-stage]');
   const setProgress = (fraction: number) => { const bar = host.querySelector<HTMLElement>('[data-album-progress]'); if (bar) bar.style.width = `${Math.max(0, Math.min(1, fraction)) * 100}%`; };
   const wait = (ms: number, next: () => void) => { window.clearTimeout(timer); timer = window.setTimeout(() => { if (playing) next(); }, calm.matches ? Math.min(ms, 400) : ms); };
+
+  // Carga diferida: solo se piden las miniaturas de la hoja actual y sus vecinas, nunca todo el álbum de golpe.
+  const hydrate = (img: HTMLImageElement) => { if (img.dataset.src && !img.dataset.hydrated) { img.dataset.hydrated = '1'; img.src = img.dataset.src; } };
+  const hydrateNear = (center: number) => {
+    const sheets = host.querySelectorAll<HTMLElement>('.alb-sheet');
+    for (let j = Math.max(0, center - 1); j <= Math.min(sheetCount - 1, center + 1); j++)
+      sheets[j]?.querySelectorAll<HTMLImageElement>('img[data-src]').forEach(hydrate);
+  };
 
   // ----- Pantalla bloqueada y pantalla completa -----
   /** El álbum se desbloquea desde fuera (host.dataset.locked) y mientras tanto muestra el motivo. */
@@ -198,6 +215,7 @@ export async function mountCompanyLife(host: HTMLElement, manifestPath = '/vida-
     const sheets = host.querySelectorAll<HTMLElement>('.alb-sheet');
     const from = spread;
     spread = Math.max(0, Math.min(sheetCount, next));
+    hydrateNear(spread); // trae la hoja visible y la siguiente antes de girarlas
     sheets.forEach((sheet, j) => {
       const turned = j < spread;
       const moving = animate && j >= Math.min(from, spread) && j < Math.max(from, spread);
@@ -221,11 +239,20 @@ export async function mountCompanyLife(host: HTMLElement, manifestPath = '/vida-
     const t = target.getBoundingClientRect(), i = item.getBoundingClientRect(), s = frame.getBoundingClientRect();
     const zoom = t.width / target.offsetWidth;
     const dx = (i.left + i.width / 2 - (t.left + t.width / 2)) / zoom, dy = (i.top + i.height / 2 - (t.top + t.height / 2)) / zoom;
-    const scale = Math.max(1.1, Math.min(2.7, (frame.clientWidth * .8) / (i.width / zoom), (frame.clientHeight * .74) / (i.height / zoom)));
+    const scale = Math.max(1.04, Math.min(2.15, (frame.clientWidth * .76) / (i.width / zoom), (frame.clientHeight * .7) / (i.height / zoom)));
     const x = s.left + s.width / 2 - (s.left + target.offsetLeft + target.offsetWidth / 2) - scale * dx;
     const y = s.top + s.height / 2 - (s.top + target.offsetTop + target.offsetHeight / 2) - scale * dy;
     frame.classList.add('is-immersive');
     focused?.classList.remove('is-focus'); focused = item; item.classList.add('is-focus');
+    // Al acercar la cámara se sube a la imagen original (nítida en el zoom); se decodifica antes de
+    // intercambiarla para que no haya parpadeo. Solo ocurre una vez por foto.
+    const img = item.querySelector<HTMLImageElement>('img[data-full]');
+    if (img?.dataset.full && !img.dataset.upgraded) {
+      img.dataset.upgraded = '1';
+      const full = img.dataset.full, loader = new Image();
+      loader.decoding = 'async'; loader.src = full;
+      loader.decode().then(() => { if (img.isConnected) img.src = full; }).catch(() => undefined);
+    }
     target.style.willChange = 'transform';
     target.style.transition = `transform ${ZOOM_MS}ms ${EASE}`;
     target.style.transform = `translate(${x}px, ${y}px) scale(${scale})`;
@@ -322,21 +349,48 @@ function openMoment(list: LifeItem[], start: number, opener: HTMLButtonElement, 
   const mediaHost = dialog.querySelector<HTMLElement>('.fontana-life-viewer-media')!;
   const captionHost = dialog.querySelector<HTMLElement>('.fontana-life-viewer-caption')!;
 
+  let token = 0;       // la navegación más reciente gana; descarta cargas que llegan tarde
+  let closed = false;  // no se toca el DOM tras cerrar
+  const fileError = () => {
+    // Se retira cualquier imagen o video anterior: nunca se deja una foto que no corresponde al título actual.
+    mediaHost.classList.remove('is-loading');
+    mediaHost.innerHTML = '<span class="fontana-life-file-error" role="alert" aria-label="Archivo no disponible">!</span>';
+  };
+  // Precarga solo las imágenes contiguas, para que pasar de una a otra sea inmediato sin bajar todas.
+  const preloadNeighbors = () => {
+    if (!several) return;
+    for (const step of [1, -1]) {
+      const neighbor = playable[(current + step + playable.length) % playable.length].item;
+      if (neighbor.kind === 'photo' && neighbor.src) { const im = new Image(); im.decoding = 'async'; im.src = neighbor.src; }
+    }
+  };
+  const dimsAttr = (item: LifeItem) => (item.width && item.height ? ` width="${item.width}" height="${item.height}"` : '');
+
   const show = (autoplay: boolean) => {
     const item = playable[current].item;
+    const mine = ++token;
     dialog.setAttribute('aria-label', item.title);
-    mediaHost.innerHTML = item.kind === 'photo'
-      ? `<img src="${escapar(item.src!)}" alt="${escapar(item.alt)}">`
-      : `<video controls${autoplay ? ' autoplay' : ''} playsinline preload="metadata"${item.poster ? ` poster="${escapar(item.poster)}"` : ''} aria-label="${escapar(item.title)}"><source src="${escapar(item.src!)}">${item.captions ? `<track kind="captions" src="${escapar(item.captions)}" srclang="es" label="Español" default>` : ''}</video>`;
     captionHost.textContent = item.caption ? `${item.title} · ${item.caption}` : item.title;
-    const media = mediaHost.querySelector<HTMLImageElement | HTMLVideoElement>('img, video')!;
-    const showError = () => {
-      if (media.hidden) return;
-      media.hidden = true;
-      mediaHost.insertAdjacentHTML('beforeend', '<span class="fontana-life-file-error" role="alert" aria-label="Archivo no disponible">!</span>');
-    };
-    media.addEventListener('error', showError, { once: true });
-    mediaHost.querySelector('source')?.addEventListener('error', showError, { once: true });
+    if (item.kind === 'video') {
+      mediaHost.classList.remove('is-loading');
+      mediaHost.innerHTML = `<video controls${autoplay ? ' autoplay' : ''} playsinline preload="metadata"${item.poster ? ` poster="${escapar(item.poster)}"` : ''} aria-label="${escapar(item.title)}"><source src="${escapar(item.src!)}">${item.captions ? `<track kind="captions" src="${escapar(item.captions)}" srclang="es" label="Español" default>` : ''}</video>`;
+      const video = mediaHost.querySelector('video')!;
+      video.addEventListener('error', fileError, { once: true });
+      video.querySelector('source')?.addEventListener('error', fileError, { once: true });
+      return;
+    }
+    // Foto: se decodifica antes de intercambiarla. Al abrir, el visor muestra un indicador discreto;
+    // al navegar, la imagen anterior permanece hasta que la nueva está lista, sin huecos ni parpadeos.
+    // El tamaño final lo fijan los atributos width/height del <img>, así que no hace falta reservar proporción.
+    mediaHost.classList.add('is-loading');
+    const loader = new Image();
+    loader.decoding = 'async'; loader.src = item.src!;
+    loader.decode().then(() => {
+      if (mine !== token || closed) return;
+      mediaHost.innerHTML = `<img src="${escapar(item.src!)}" alt="${escapar(item.alt)}"${dimsAttr(item)}>`;
+      mediaHost.classList.remove('is-loading');
+      preloadNeighbors();
+    }).catch(() => { if (mine === token && !closed) fileError(); });
   };
   const move = (step: number) => {
     mediaHost.querySelector('video')?.pause();
@@ -359,6 +413,7 @@ function openMoment(list: LifeItem[], start: number, opener: HTMLButtonElement, 
     if (event.clientX < box.left || event.clientX > box.right || event.clientY < box.top || event.clientY > box.bottom) dialog.close();
   });
   dialog.addEventListener('close', () => {
+    closed = true;
     dialog.querySelector('video')?.pause();
     dialog.remove();
     document.documentElement.classList.remove('fontana-life-viewer-open');
