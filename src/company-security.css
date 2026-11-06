@@ -33,6 +33,7 @@
 .company-security .security-detail h4:focus-visible { outline: 3px solid #d4af37; outline-offset: 4px; border-radius: 4px; }
 /* Misma jerarquía y estilo que el bloque «Esto es lo que explica el tutor» (.principle-narration p). */
 .company-security .security-explanation p { margin: 6px 0 0; color: var(--navy); font-size: 15px; line-height: 1.65; }
+.company-security .security-explanation .policy-source { display: block; margin-top: 12px; color: var(--muted); font-size: 12px; line-height: 1.45; }
 /* Control de narración mínimo, igual que «Principios»: enlace de pausar/escuchar + estado. El <audio> va oculto. */
 .company-security .security-narration { display: flex; flex-direction: column; align-items: flex-start; }
 .company-security .security-narration audio { display: none; }

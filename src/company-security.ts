@@ -54,9 +54,11 @@ export function mountSecuritySlider(root: HTMLElement, topic = 'seguridad de la 
     const count = card.querySelector<HTMLElement>('.security-number')!;
     count.className = 'detail-count'; count.removeAttribute('aria-hidden'); count.textContent = `PASO ${String(i + 1).padStart(2, '0')} / ${String(cards.length).padStart(2, '0')}`;
     const paragraph = card.querySelector('p')!;
+    const source = card.querySelector<HTMLElement>('.policy-source');
     const note = document.createElement('div'); note.className = 'detail-note security-explanation';
     const label = document.createElement('strong'); label.textContent = 'Lo que debes recordar';
     note.append(label, paragraph);
+    if (source) note.append(source);
     const audioInfo = withAudio ? SECURITY_AUDIO[i] : undefined;
     if (audioInfo) {
       // Narración estilo «Principios»: el <audio> va oculto (solo reproduce y sincroniza el avatar) y el único
