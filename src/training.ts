@@ -9,7 +9,7 @@ import { mountCompanyLife } from './company-life';
 const companyLife = document.querySelector<HTMLElement>('#fontana-life-mural');
 if (companyLife) {
   companyLife.dataset.locked = 'true'; // se desbloquea al confirmar la lectura de la empresa
-  void mountCompanyLife(companyLife, undefined, () => showAlbumContinue());
+  void mountCompanyLife(companyLife, undefined, () => showAlbumComplete());
 }
 
 // Obtiene un elemento obligatorio y detecta referencias HTML incorrectas.
@@ -253,6 +253,18 @@ albumContinueButton.addEventListener('click', () => { void finishInduction(); })
 function showAlbumContinue(): void {
   albumContinue.hidden = false;
   albumContinue.scrollIntoView({ behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'instant' : 'smooth', block: 'nearest' });
+}
+// AVISO al terminar el recorrido: modal que felicita e invita a continuar con la ruta de formación
+// (mismo estilo que el aviso de «Nuestra historia»). El botón lleva a la ruta; cerrar deja visible la sección.
+const albumCompleteDialog = element<HTMLDialogElement>('#album-complete-dialog');
+element('#album-complete-close').addEventListener('click', () => albumCompleteDialog.close());
+element('#album-complete-go').addEventListener('click', () => { albumCompleteDialog.close(); void finishInduction(); });
+// Al cerrar el aviso (botón, ×, Escape o al ir a la ruta) se revela la sección inline como respaldo:
+// permite continuar/reintentar y ver mensajes de error. No se muestra junto al aviso.
+albumCompleteDialog.addEventListener('close', () => showAlbumContinue());
+function showAlbumComplete(): void {
+  // Al terminar el recorrido aparece SOLO la ventana emergente (la sección inline queda para el cierre).
+  if (!albumCompleteDialog.open) albumCompleteDialog.showModal();
 }
 // Al volver, lo que el asesor ya completó queda desbloqueado: los bloqueos solo aplican la primera vez.
 export function restoreProgress(progress: { historia: boolean; metodo: boolean; completada: boolean }): void {

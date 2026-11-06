@@ -107,8 +107,20 @@ export async function mountCompanyLife(host: HTMLElement, manifestPath = '/vida-
 
   const stopAuto = () => { window.clearTimeout(timer); timer = 0; };
   const startAuto = () => { stopAuto(); if (!reduce.matches && index < total - 1 && !document.hidden) timer = window.setTimeout(() => { show(index + 1); startAuto(); }, INTERVAL); };
-  // Navegación manual (flechas/teclado/gestos): avanza y reinicia el avance automático.
-  const navTo = (i: number) => { stopAuto(); show(i); startAuto(); };
+  // Navegación manual (flechas/teclado/gestos): avanza y reinicia el avance automático. Si la flecha usada
+  // queda deshabilitada en el extremo, el navegador la desenfoca y el foco caería al <body>; se recupera
+  // dentro del visor (al botón «Finalizar» si ya está visible, si no al de cerrar).
+  const navTo = (i: number) => {
+    const hadFocus = !!viewer && viewer.contains(document.activeElement);
+    stopAuto(); show(i); startAuto();
+    if (hadFocus && viewer) {
+      const active = document.activeElement as HTMLElement | null;
+      if (!active || !viewer.contains(active) || (active as HTMLButtonElement).disabled) {
+        const finishBtn = viewer.querySelector<HTMLButtonElement>('[data-life-finish]');
+        (finishBtn && !finishBtn.hidden ? finishBtn : viewer.querySelector<HTMLButtonElement>('[data-life-close]'))?.focus();
+      }
+    }
+  };
 
   function preload(i: number): void {
     const src = items[i]?.src;
@@ -150,7 +162,7 @@ export async function mountCompanyLife(host: HTMLElement, manifestPath = '/vida-
       cur.classList.remove('is-active'); cur.setAttribute('aria-hidden', 'true');
       layer = 1 - layer;
       loadingEl.classList.remove('is-on');
-    }).catch(() => { if (mine === token) loadingEl.classList.remove('is-on'); });
+    }).catch(() => { if (mine === token && viewer) loadingEl.classList.remove('is-on'); });
     preload(i + 1); preload(i - 1);
   }
 
@@ -192,7 +204,7 @@ export async function mountCompanyLife(host: HTMLElement, manifestPath = '/vida-
     viewer.innerHTML = `
       <aside class="life-vpanel">
         <span class="life-vmark" aria-hidden="true">Fontana</span>
-        <div class="life-vmeta">
+        <div class="life-vmeta" aria-live="polite">
           <span class="life-vfloor" data-vfloor></span>
           <h2 class="life-vtitle" data-vtitle></h2>
           <p class="life-vperson" data-vperson hidden></p>

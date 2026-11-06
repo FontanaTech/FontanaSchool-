@@ -322,6 +322,19 @@
       <button class="primary" id="completion-go-principles" autofocus>Continuar con las reglas y políticas →</button>
     </dialog>
 
+    <!-- AVISO: aparece al terminar el recorrido fotográfico de la empresa y lleva a la ruta de formación (src/training.ts). -->
+    <dialog id="album-complete-dialog" class="completion-dialog" aria-labelledby="album-complete-title" aria-describedby="album-complete-desc">
+      <button class="completion-close" id="album-complete-close" aria-label="Cerrar aviso">×</button>
+      <div class="completion-emblem" aria-hidden="true">
+        <img src="/imagenes/fontana-logo.webp" alt="">
+        <span>✓</span>
+      </div>
+      <p class="eyebrow">RECORRIDO COMPLETO · MÓDULO 01</p>
+      <h2 id="album-complete-title">Ya conoces nuestros espacios.</h2>
+      <p id="album-complete-desc">Terminaste el recorrido por la empresa. Da el siguiente paso: tu ruta de formación te espera para convertirte en asesor certificado.</p>
+      <button class="primary" id="album-complete-go" autofocus>Ir a mi ruta de formación →</button>
+    </dialog>
+
     </div>
     <!-- INTERACCIONES: src/main.ts inicia la sesión y carga la interfaz correspondiente. -->
     <script type="module" src="/src/main.ts"></script>

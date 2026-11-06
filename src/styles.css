@@ -1193,6 +1193,8 @@ input:focus-visible { outline: 2px solid var(--red); outline-offset: 4px; }
 .completion-milestones { display: flex; justify-content: center; gap: 12px; margin: 22px 0; }
 .completion-milestones span { padding: 5px 14px; border-radius: 20px; border: 1px solid #d4af3750; background: #d4af3718; color: #78551e; font-size: 12px; font-weight: 600; }
 .completion-dialog > .primary { width: 100%; }
+/* El aviso de fin de recorrido no lleva la fila de hitos; se compensa el espacio antes del botón. */
+#album-complete-dialog > #album-complete-go { margin-top: 24px; }
 
 /* Cuenta del asesor dentro del encabezado vino (reemplaza la barra azul superior). */
 header { position: relative; }
