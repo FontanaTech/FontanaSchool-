@@ -26,8 +26,8 @@ export function createSecurityReading(total: number, autoUnlock = true) {
 }
 
 // onComplete se avisa una sola vez, al llegar al último paso (los pasos solo se desbloquean en orden).
-// withAudio controla la narración: las reglas y políticas no llevan audio.
-export function mountSecuritySlider(root: HTMLElement, topic = 'seguridad de la información', onComplete?: () => void, withAudio = false): void {
+// withAudio controla la narración; cada sección puede recibir su propio manifiesto.
+export function mountSecuritySlider(root: HTMLElement, topic = 'seguridad de la información', onComplete?: () => void, withAudio = false, audioManifest: readonly ({ original: string; processed?: string | null } | null)[] = SECURITY_AUDIO): void {
   const slides = root.querySelector<HTMLElement>('[data-security-slides]')!;
   const cards = [...slides.querySelectorAll<HTMLElement>('article')];
   if (!cards.length) return;
@@ -59,39 +59,29 @@ export function mountSecuritySlider(root: HTMLElement, topic = 'seguridad de la 
     const label = document.createElement('strong'); label.textContent = 'Lo que debes recordar';
     note.append(label, paragraph);
     if (source) note.append(source);
-    const audioInfo = withAudio ? SECURITY_AUDIO[i] : undefined;
+    const audioInfo = withAudio ? audioManifest[i] : undefined;
     if (audioInfo) {
-      // Narración estilo «Principios»: el <audio> va oculto (solo reproduce y sincroniza el avatar) y el único
-      // control visible es un enlace para pausar/escuchar, con una línea de estado accesible debajo.
+      // El audio va oculto y se reproduce automáticamente al entrar en cada paso.
       const narration = document.createElement('div'); narration.className = 'security-narration';
       narration.setAttribute('aria-label', `Narración del paso ${i + 1}`);
       const audio = document.createElement('audio');
       audioElementForAvatar = audio;
       audio.preload = 'metadata'; audio.src = audioInfo.processed ?? audioInfo.original;
-      audio.setAttribute('aria-hidden', 'true'); // el control accesible es el botón; el texto ya está visible arriba
-      const playButton = document.createElement('button'); playButton.type = 'button'; playButton.className = 'security-pause';
-      const status = document.createElement('p'); status.className = 'security-status'; status.setAttribute('role', 'status'); status.setAttribute('aria-live', 'polite');
-      narration.append(audio, playButton, status);
+      audio.setAttribute('aria-hidden', 'true');
+      narration.append(audio);
       audioPanel = narration;
-      const setControl = (label: string, message: string): void => { playButton.textContent = label; playButton.setAttribute('aria-label', `${label} de este paso`); status.textContent = message; };
-      setControl('Escuchar explicación', 'La explicación se reproduce automáticamente. Si no comienza, pulsa «Escuchar».');
-      audio.addEventListener('waiting', () => { if (!audio.paused) setControl('Pausar explicación', 'Preparando la explicación…'); });
       audio.addEventListener('play', () => {
         if (activeSecurityAudio && activeSecurityAudio !== audio) activeSecurityAudio.pause();
-        activeSecurityAudio = audio; setControl('Pausar explicación', 'El tutor te está explicando este paso.');
+        activeSecurityAudio = audio;
       });
-      audio.addEventListener('pause', () => { if (!audio.ended) setControl('Continuar explicación', 'En pausa. Pulsa «Continuar» para seguir escuchando.'); });
       audio.addEventListener('ended', () => {
         if (activeSecurityAudio === audio) activeSecurityAudio = null;
-        setControl('Escuchar explicación', 'Terminó la explicación de este paso.');
         // Al terminar el audio se habilita y se avanza al siguiente paso; en el último se cierra el recorrido.
         reading.complete(i);
         if (i + 1 < cards.length) goTo(i + 1, true);
         else { paint(); if (!completed) { completed = true; onComplete?.(); } }
       });
-      audio.addEventListener('error', () => { if (activeSecurityAudio === audio) activeSecurityAudio = null; setControl('Escuchar explicación', 'No pudimos reproducir el audio. Puedes leer la explicación en el texto.'); });
-      // Clic en el enlace: alterna reproducir/pausar, igual que el botón de «Principios».
-      playButton.addEventListener('click', () => { if (audio.paused || audio.ended) void audio.play().catch(() => {}); else audio.pause(); });
+      audio.addEventListener('error', () => { if (activeSecurityAudio === audio) activeSecurityAudio = null; });
       audios.push(audio); stepAudios[i] = audio;
     }
     const avatarSrc = slides.dataset.securityAvatar;           // imagen estática (Reglas y políticas)

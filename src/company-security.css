@@ -5,7 +5,8 @@
 .company-security .security-heading .eyebrow { margin: 0 0 10px; }
 .company-security .security-heading h3 { margin: 0; font-size: 28px; line-height: 1.35; font-weight: 600; }
 .company-security .security-stage { display: grid; grid-template-columns: auto 1fr; align-items: end; gap: 20px; }
-/* Avatar: estático en «Reglas y políticas»; en «Seguridad» se anima por fotogramas, con el mismo ancho que el tutor. */
+/* Avatar: se anima por fotogramas en «Seguridad» y en «Reglas y políticas» (misma coreografía), con el mismo ancho que el tutor.
+   El bloque estático (:not(.is-frames)) sigue sirviendo de respaldo para pasos sin audio. */
 .company-security .security-avatar { position: relative; width: clamp(170px, 18vw, 240px); margin: 0 0 -4px; align-self: end; }
 /* Avatar estático (retrato con desvanecido inferior, igual que el tutor). */
 .company-security .security-avatar:not(.is-frames) img { display: block; width: 100%; height: auto; -webkit-mask-image: linear-gradient(to bottom, #000 80%, transparent 100%); mask-image: linear-gradient(to bottom, #000 80%, transparent 100%); }

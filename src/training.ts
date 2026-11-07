@@ -5,6 +5,7 @@ import { api } from './http';
 import { showAppLoading } from './loading';
 import type { PrinciplesPanel } from './tutor/principles-panel';
 import { mountCompanyLife } from './company-life';
+import { POLICY_AUDIO } from './policies-audio';
 
 const companyLife = document.querySelector<HTMLElement>('#fontana-life-mural');
 if (companyLife) {
@@ -66,15 +67,15 @@ function openTab(tab: HTMLButtonElement): void {
   focusContent();
 }
 // Al terminar los pasos de una pestaña se abre la siguiente y aparece el botón para continuar.
-function chainTab(panelId: string, topic: string | undefined, next: HTMLButtonElement, label: string, withAudio = false): void {
+function chainTab(panelId: string, topic: string | undefined, next: HTMLButtonElement, label: string, withAudio = false, audioManifest?: readonly ({ original: string; processed?: string | null } | null)[]): void {
   const panel = element(panelId);
   const button = document.createElement('button');
   button.type = 'button'; button.className = 'primary security-continue'; button.hidden = true; button.textContent = label;
   button.addEventListener('click', () => openTab(next));
   panel.append(button);
-  mountSecuritySlider(panel, topic, () => { unlockTab(next); button.hidden = false; }, withAudio);
+  mountSecuritySlider(panel, topic, () => { unlockTab(next); button.hidden = false; }, withAudio, audioManifest);
 }
-chainTab('#policies', 'reglas y políticas de la compañía', securityTab, 'Continuar con la seguridad de la información →');
+chainTab('#policies', 'reglas y políticas de la compañía', securityTab, 'Continuar con la seguridad de la información →', true, POLICY_AUDIO);
 chainTab('#security', undefined, principlesTab, 'Continuar con los principios de trabajo →', true);
 tabs.forEach((tab, index) => {
   tab.addEventListener('click', () => selectTab(index));
