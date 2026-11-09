@@ -2,12 +2,14 @@ import { escapar } from '../http';
 import { decorateTutorFeedback } from '../tutor/feedback';
 import { icon } from './concepts-slider';
 import { showSelectedCollectionOptions } from './ui';
+import { mountAlternativeDrill } from './alternative-drill';
+import { mountQuickChallenge, type QuickChallengeCase, type QuickChallengeState } from './quick-challenge';
 import {
   AGENCY, PORTFOLIO, QUALITY_NOTICE, CLIENT_REPLY, GUIDED_BLOCKS,
   QUALITY_ANSWERS, INFORMATION_QUESTIONS, PAYMENT_QUESTION, REGISTRATION_RESULTS, REGISTRATION_PRACTICE,
-  PAYMENT_ALTERNATIVES, ALTERNATIVE_PRACTICE, answerAlternativePractice,
+  PAYMENT_ALTERNATIVES,
   advanceGuidedCase, caseGreeting, casePresentation, caseInformation,
-  type GuidedCaseState, type GuidedBlockKey, type GuidedStepKey, type DraftField, type PaymentAlternative,
+  type GuidedCaseState, type GuidedBlockKey, type GuidedStepKey, type DraftField,
 } from './guided-case-model';
 
 type Options = { block: GuidedBlockKey; onContinue: () => void; saving: boolean; error: string };
@@ -16,7 +18,6 @@ export function mountGuidedCase(root: HTMLElement, state: GuidedCaseState, optio
   const guide = GUIDED_BLOCKS[options.block];
   const progress = state.progress[options.block];
   let feedback = '';
-  let practiceSuccess = '';
   let clearTutor: (() => void) | undefined;
   function focus(selector: string): void { root.querySelector<HTMLElement>(selector)?.focus(); }
   function input(name: DraftField, label: string, placeholder: string, extra = ''): string {
@@ -38,22 +39,22 @@ export function mountGuidedCase(root: HTMLElement, state: GuidedCaseState, optio
       icon('<path d="m32 8 20 8v14c0 12-8 21-20 26-12-5-20-14-20-26V16zM23 32l6 6 13-14"/>'),
       icon('<rect x="9" y="15" width="46" height="40" rx="5"/><path d="M9 27h46M21 8v14M43 8v14m-24 18 8 8 15-15"/>'),
     ];
-    const practice = state.alternativePractice;
-    const exercise = ALTERNATIVE_PRACTICE[practice.index];
+    // El reto rápido de alternativas se monta aparte, con la misma entidad que el reto que inicia el módulo
+    // (medidor, opciones con letra, veredicto con tutor, auto-avance y transiciones). Ver mountAlternativeDrill.
     return `<div class="collections-alternative-layout"><div class="collections-payment-paths">${PAYMENT_ALTERNATIVES.map((alternative, index) => `<article><span aria-hidden="true">${symbols[index]}</span><div><h5>${index + 1}. ${alternative.title}</h5><p>${alternative.explanation}</p><small>${alternative.reminder}</small></div></article>`).join('')}</div>
-      <section class="collections-alternative-drill" aria-labelledby="case-alternative-title"><p class="collections-kicker">RETO RÁPIDO · ${ALTERNATIVE_PRACTICE.length} CASOS FICTICIOS</p>
-      ${exercise ? `<h5 id="case-alternative-title" tabindex="-1">Caso ${practice.index + 1} de ${ALTERNATIVE_PRACTICE.length} · ¿Qué posibilidad encaja?</h5><blockquote>«${exercise.quote}»</blockquote><div class="collections-alternative-choices" role="group" aria-labelledby="case-alternative-title">${PAYMENT_ALTERNATIVES.map((alternative) => `<button type="button" data-alternative-answer="${alternative.key}">${alternative.title}</button>`).join('')}</div>`
-        : '<h5 id="case-alternative-title" tabindex="-1">✓ Identificaste las cuatro posibilidades</h5><p>Pago total · Abono + fechas · Descuento con el líder · Fecha Acuerdo Pago total.</p>'}
-      ${practiceSuccess ? `<p class="collections-alternative-success" role="status">${escapar(practiceSuccess)}</p>` : ''}
-      ${feedback ? `<p class="collections-dossier-feedback is-wrong" id="guided-feedback" role="alert" tabindex="-1">${escapar(feedback)} Puedes volver a intentarlo.</p>` : ''}</section></div>`;
+      <div data-alternative-drill></div></div>`;
   }
-  function registrationHtml(): string {
-    const exercise = REGISTRATION_PRACTICE[progress.index];
-    return `<section class="collections-registration-exercise" aria-label="Práctica de tipificación">
-      <div id="registration-situation" class="collections-registration-situation"><span>SITUACIÓN · CASO ${progress.index + 1} DE ${REGISTRATION_PRACTICE.length}</span><p>${escapar(exercise.situation)}</p></div>
-      <label class="collections-plan-field" for="case-registrationAnswer">¿Cómo tipificas esta gestión?<select id="case-registrationAnswer" data-case-field="registrationAnswer" aria-describedby="registration-situation" required><option value="">Elige la tipificación</option>${REGISTRATION_RESULTS.map((result) => `<option value="${result.value}"${state.registrationAnswer === result.value ? ' selected' : ''}>${result.text}</option>`).join('')}</select></label>
-      ${feedback ? `<p class="collections-dossier-feedback is-wrong" id="guided-feedback" role="alert" tabindex="-1">${escapar(feedback)} Vuelve a intentarlo.</p>` : ''}
-      <button type="submit" class="collections-primary">Comprobar respuesta →</button><p class="collections-plan-hint">Acierta para desbloquear el siguiente caso. Tipificaciones didácticas sujetas a validación interna.</p></section>`;
+  function registrationHtml(): string { return '<div data-registration-drill></div>'; }
+  function registrationCases(): readonly QuickChallengeCase[] {
+    return REGISTRATION_PRACTICE.map((exercise) => ({
+      concept: 'Cierre y seguimiento',
+      prompt: exercise.situation,
+      choices: REGISTRATION_RESULTS.map((result) => ({
+        text: result.text,
+        correct: result.value === exercise.expected,
+        feedback: result.value === exercise.expected ? exercise.feedback : `Esta gestión corresponde a ${REGISTRATION_RESULTS.find((item) => item.value === exercise.expected)?.text ?? 'otra tipificación'}.`,
+      })),
+    }));
   }
   function taskHtml(step: GuidedStepKey): string {
     switch (step) {
@@ -83,10 +84,21 @@ export function mountGuidedCase(root: HTMLElement, state: GuidedCaseState, optio
       case 'registro': return registrationHtml();
     }
   }
+  // Ventana con el guion que el asesor acabó de practicar (bloque Contacto). Se abre sola al completar el guion y
+  // también con el botón «Ver el guion»; su botón principal la cierra y continúa al siguiente bloque.
+  function scriptDialogHtml(): string {
+    return `<dialog class="collections-script-dialog" id="collections-script-dialog" aria-labelledby="script-dialog-title">
+      <button type="button" class="collections-script-dialog__close" data-script-close aria-label="Cerrar la ventana del guion">×</button>
+      <p class="collections-kicker">GUION PRACTICADO · CASO FICTICIO</p>
+      <h4 id="script-dialog-title" tabindex="-1" autofocus>Este es el guion que realizaste</h4>
+      <div class="collections-call-summary"><h5>Saludo</h5><p>${escapar(caseGreeting(state))}</p><h5>Presentación</h5><p>${escapar(casePresentation(state))}</p><h5>Calidad</h5><p>${QUALITY_NOTICE}</p><p class="collections-plan-identity">Identidad verificada dentro del escenario antes de hablar de la deuda.</p><h5>Información y escucha</h5><p>${escapar(caseInformation())}</p></div>
+      <button type="button" class="collections-primary" data-script-continue>${escapar(guide.nextLabel)}</button>
+    </dialog>`;
+  }
   function completionHtml(): string {
     let summary = '';
     if (options.block === 'preparacion') summary = '<p class="collections-plan-success">Saldo verificado: $400.000 · Abono anterior aplicado: $80.000.</p>';
-    if (options.block === 'contacto') summary = `<p class="collections-plan-success">✓ Informaste la cartera, el saldo verificado y abriste la conversación con una pregunta.</p>${reply()}<details class="collections-more"><summary>Ver el guion que practicaste</summary><div class="collections-call-summary"><h5>Saludo</h5><p>${escapar(caseGreeting(state))}</p><h5>Presentación</h5><p>${escapar(casePresentation(state))}</p><h5>Calidad</h5><p>${QUALITY_NOTICE}</p><p class="collections-plan-identity">Identidad verificada dentro del escenario antes de hablar de la deuda.</p><h5>Información y escucha</h5><p>${escapar(caseInformation())}</p></div></details>`;
+    if (options.block === 'contacto') summary = `<p class="collections-plan-success">✓ Informaste la cartera, el saldo verificado y abriste la conversación con una pregunta.</p>${reply()}<button type="button" class="collections-secondary" data-script-open>Ver el guion que practicaste</button>${scriptDialogHtml()}`;
     if (options.block === 'alternativas') summary = '<p class="collections-plan-success">✓ Cuatro casos completados: Pago total, Abono + fechas, Descuento con el líder y Fecha Acuerdo Pago total.</p>';
     if (options.block === 'seguimiento') summary = '<p class="collections-plan-success collections-plan-success--avatar-only" aria-label="Resultado guardado"></p>';
     return `<div class="collections-dossier-complete"><p class="collections-kicker">${guide.steps.length} DE ${guide.steps.length} PASOS COMPLETADOS</p><h4 id="guided-detail-title" tabindex="-1">${guide.doneTitle}</h4><p>${guide.doneText}</p>${summary}<button type="button" data-case-continue class="collections-primary"${options.saving ? ' disabled' : ''}>${options.saving ? 'Guardando…' : guide.nextLabel}</button></div>`;
@@ -99,13 +111,12 @@ export function mountGuidedCase(root: HTMLElement, state: GuidedCaseState, optio
     root.innerHTML = `<section class="collections-dossier" aria-labelledby="guided-case-title" aria-busy="${options.saving}">
       <header class="collections-dossier-head"><div><p>CASO FICTICIO F-204 · ${options.block === 'seguimiento' ? 'PRACTICA DISTINTOS ESCENARIOS DE CIERRE' : 'CONTINÚA LA MISMA GESTIÓN'}</p><h3 id="guided-case-title">El caso de Camila Rojas</h3></div><span class="collections-dossier-badge">Paso a paso</span></header>
       <div class="collections-plan-workspace${fullWidth ? ' collections-plan-workspace--wide' : ''}">${stepNav}
-      <section class="collections-dossier-detail" aria-labelledby="guided-detail-title">${progress.finished ? completionHtml() : `<p class="collections-kicker">PASO ${progress.index + 1} DE ${guide.steps.length}</p><h4 id="guided-detail-title" tabindex="-1">${progress.index + 1}. ${current.title}</h4>${progress.index ? `<p class="collections-case-confirmation" role="status">✓ Paso ${progress.index} completado. Sigue con ${current.title.toLocaleLowerCase('es')}.</p>` : ''}<form data-case-form>${taskHtml(current.key)}</form>`}
+      <section class="collections-dossier-detail" aria-labelledby="guided-detail-title">${progress.finished ? completionHtml() : `${fullWidth ? '' : `<p class="collections-kicker">PASO ${progress.index + 1} DE ${guide.steps.length}</p>`}<h4 id="guided-detail-title" tabindex="-1">${progress.index + 1}. ${current.title}</h4>${progress.index ? `<p class="collections-case-confirmation" role="status">✓ Paso ${progress.index} completado. Sigue con ${current.title.toLocaleLowerCase('es')}.</p>` : ''}<form data-case-form>${taskHtml(current.key)}</form>`}
       ${feedback && !fullWidth ? `<p class="collections-dossier-feedback is-wrong" id="guided-feedback" role="alert" tabindex="-1">${escapar(feedback)} Puedes volver a intentarlo.</p>` : ''}
       ${options.error ? `<p id="collections-error" class="collections-submit-error" role="alert" tabindex="-1">${escapar(options.error)}</p>` : ''}</section></div>
       <p class="collections-dossier-note">Caso y datos de cliente ficticios · Nombres de entidades tomados del guion de referencia · Grabación, monitoreo e identidad verificada son supuestos del escenario · Guion y condiciones reales pendientes de validación interna.</p>
     </section>`;
     const message = root.querySelector<HTMLElement>('#guided-feedback')
-      ?? root.querySelector<HTMLElement>('.collections-alternative-success')
       ?? root.querySelector<HTMLElement>('.collections-plan-success')
       ?? root.querySelector<HTMLElement>('.collections-case-confirmation');
     if (message) clearTutor = decorateTutorFeedback(message, feedback ? 'support' : progress.finished ? 'complete' : 'success');
@@ -114,21 +125,49 @@ export function mountGuidedCase(root: HTMLElement, state: GuidedCaseState, optio
       const preview = root.querySelector('[data-case-preview]');
       if (preview) preview.textContent = current.key === 'saludo' ? caseGreeting(state) : casePresentation(state);
     }));
-    root.querySelectorAll<HTMLButtonElement>('[data-alternative-answer]').forEach((button) => button.addEventListener('click', () => {
-      if (options.saving || progress.finished || current.key !== 'posibilidad') return;
-      const answer = button.dataset.alternativeAnswer as PaymentAlternative;
-      feedback = answerAlternativePractice(state, answer);
-      practiceSuccess = feedback ? '' : answer === 'total' ? '✓ Pago total: cubre toda la deuda.' : answer === 'abono' ? '✓ Abono: acuerda fechas para cancelar lo pendiente.' : answer === 'descuento' ? '✓ Descuento: primero valida con tu líder; después ofrece lo autorizado.' : '✓ Fecha Acuerdo Pago total: registra el monto completo y la fecha acordada. Es un compromiso, no un pago confirmado.';
-      if (!feedback && state.alternativePractice.index === ALTERNATIVE_PRACTICE.length) feedback = advanceGuidedCase(state, options.block);
-      render(); focus(feedback ? '#guided-feedback' : progress.finished ? '#guided-detail-title' : '#case-alternative-title');
-    }));
+    const drillHost = root.querySelector<HTMLElement>('[data-alternative-drill]');
+    // El reto rápido se maneja solo (reintentos, auto-avance y transiciones); al resolver los cuatro casos avisa
+    // para que el caso guiado cierre el bloque y muestre su pantalla de fin.
+    if (drillHost && !progress.finished) mountAlternativeDrill(drillHost, state, { onComplete: () => {
+      feedback = advanceGuidedCase(state, options.block);
+      render(); focus(feedback ? '#guided-feedback' : '#guided-detail-title');
+    } });
+    const registrationHost = root.querySelector<HTMLElement>('[data-registration-drill]');
+    if (registrationHost && !progress.finished) {
+      const challengeState: QuickChallengeState = { index: 0, answers: [], finished: false };
+      mountQuickChallenge(registrationHost, challengeState, {
+        cases: registrationCases(),
+        continueLabel: guide.nextLabel,
+        saving: options.saving,
+        error: options.error,
+        onContinue: options.onContinue,
+        onFinished: () => {
+          state.registrationAnswers = REGISTRATION_PRACTICE.map((exercise) => exercise.expected);
+          state.registrationAnswer = '';
+          progress.index = REGISTRATION_PRACTICE.length;
+          progress.finished = true;
+          render();
+          focus('guided-detail-title');
+        },
+      });
+    }
     root.querySelector('[data-case-practice]')?.addEventListener('click', () => { state.informationPractice = true; feedback = ''; render(); focus('#case-informationPortfolio'); });
     root.querySelector('[data-case-source]')?.addEventListener('click', () => { state.sourceOpen = true; render(); focus('[data-case-source]'); });
+    // Ventana del guion (bloque Contacto): se puede reabrir con «Ver el guion»; su botón principal cierra y continúa.
+    const scriptDialog = root.querySelector<HTMLDialogElement>('#collections-script-dialog');
+    if (scriptDialog) {
+      root.querySelector('[data-script-open]')?.addEventListener('click', () => { if (!scriptDialog.open) scriptDialog.showModal(); });
+      root.querySelector('[data-script-close]')?.addEventListener('click', () => scriptDialog.close());
+      root.querySelector('[data-script-continue]')?.addEventListener('click', () => { scriptDialog.close(); if (!options.saving) options.onContinue(); });
+    }
     root.querySelector('[data-case-form]')?.addEventListener('submit', (event) => {
       event.preventDefault();
       if (options.saving || progress.finished) return;
       feedback = advanceGuidedCase(state, options.block);
-      render(); focus(feedback ? '#guided-feedback' : '#guided-detail-title');
+      render();
+      // Al completar el guion de Contacto, la ventana se abre sola (ella gestiona el foco); en los demás casos, foco normal.
+      if (!feedback && progress.finished && options.block === 'contacto') root.querySelector<HTMLDialogElement>('#collections-script-dialog')?.showModal();
+      else focus(feedback ? '#guided-feedback' : '#guided-detail-title');
     });
     root.querySelector('[data-case-continue]')?.addEventListener('click', () => { if (progress.finished && !options.saving) options.onContinue(); });
     showSelectedCollectionOptions(root);

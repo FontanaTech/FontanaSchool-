@@ -34,7 +34,7 @@ describe('Caso de Camila repartido entre los bloques 02 a 05', () => {
       expect(advanceGuidedCase(state, block)).toBe('');
       expect(state.progress).toEqual(completed);
     }
-    expect(state.registrationAnswers).toEqual(['sin-acuerdo', 'voluntad', 'tercero', 'no-contesta']);
+    expect(state.registrationAnswers).toEqual(['paz-salvo', 'acuerdo-total', 'acuerdo-abono', 'volver-llamar', 'incumplido', 'sin-acuerdo']);
   });
 
   it('exige comprender el aviso de calidad antes de pasar a informar y escuchar', () => {
@@ -92,7 +92,7 @@ describe('Caso de Camila repartido entre los bloques 02 a 05', () => {
     expect(state.progress.alternativas).toEqual({ index: 1, finished: true });
     expect(state.progress.seguimiento.finished).toBe(false);
     expect(state.registrationAnswers).toEqual([]);
-    // Repetir el envío tras los cuatro casos no genera respuestas adicionales.
+    // Repetir el envío tras los siete casos no genera respuestas adicionales.
     expect(answerAlternativePractice(state, 'fecha-total')).toBe('');
     expect(state.alternativePractice.answers).toHaveLength(4);
   });
@@ -101,18 +101,18 @@ describe('Caso de Camila repartido entre los bloques 02 a 05', () => {
     const state = createGuidedCaseState();
     expect(advanceGuidedCase(state, 'seguimiento')).not.toBe('');
     expect(state.progress.seguimiento).toEqual({ index: 0, finished: false });
-    state.registrationAnswer = 'no-contesta';
+    state.registrationAnswer = 'acuerdo-total';
     expect(advanceGuidedCase(state, 'seguimiento')).toBe(REGISTRATION_PRACTICE[0].feedback);
     expect(state.registrationAnswers).toEqual([]);
-    expect(state.registrationAnswer).toBe('no-contesta');
+    expect(state.registrationAnswer).toBe('acuerdo-total');
     for (const [index, exercise] of REGISTRATION_PRACTICE.entries()) {
       expect(state.progress.seguimiento.index).toBe(index);
       state.registrationAnswer = exercise.expected;
       expect(advanceGuidedCase(state, 'seguimiento')).toBe('');
       expect(state.registrationAnswers).toEqual(REGISTRATION_PRACTICE.slice(0, index + 1).map((item) => item.expected));
       expect(state.registrationAnswer).toBe('');
-      expect(state.progress.seguimiento.finished).toBe(index === 3);
-      if (index < 3) {
+      expect(state.progress.seguimiento.finished).toBe(index === 5);
+      if (index < 5) {
         expect(advanceGuidedCase(state, 'seguimiento')).not.toBe('');
         expect(state.progress.seguimiento.index).toBe(index + 1);
       }
