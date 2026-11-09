@@ -17,7 +17,9 @@ import { evaluationRouter } from './routes/training-evaluation.routes.js';
 import { certificatesRouter } from './routes/certificates.routes.js';
 import { mediaRouter } from './routes/media.routes.js';
 import { mountWebView } from './views/web.view.js';
+import compression from 'compression';
 import { publishChange } from './realtime/admin-live.js';
+import { clearSessionCache } from './services/session-cache.js';
 
 const currentDirectory = path.dirname(fileURLToPath(import.meta.url));
 const projectRoot = path.resolve(currentDirectory, '..');
@@ -29,6 +31,8 @@ app.disable('x-powered-by');
 // TRUST_PROXY está desactivada por defecto; se activa con el número de saltos del proxy.
 if (env.TRUST_PROXY !== false) app.set('trust proxy', env.TRUST_PROXY);
 app.use(requestId);
+// Comprime respuestas de texto (JSON, HTML, JS, CSS): menos bytes por la red, sobre todo en las pantallas grandes.
+app.use(compression());
 app.use('/api', (_request, response, next) => { response.setHeader('Cache-Control', 'no-store'); next(); });
 
 // Integraciones antes del parser JSON y fuera de mismaProcedencia: se autentican con firma HMAC.
@@ -39,7 +43,7 @@ app.use(express.urlencoded({ extended: false }));
 app.use('/api', mismaProcedencia);
 // Panel de administración en vivo: toda petición que modifica datos y termina bien avisa a los administradores conectados.
 app.use('/api', (request, response, next) => {
-  if (!['GET', 'HEAD', 'OPTIONS'].includes(request.method)) response.on('finish', () => { if (response.statusCode < 400) publishChange(); });
+  if (!['GET', 'HEAD', 'OPTIONS'].includes(request.method)) response.on('finish', () => { clearSessionCache(); if (response.statusCode < 400) publishChange(); });
   next();
 });
 

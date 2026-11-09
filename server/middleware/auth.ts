@@ -2,7 +2,7 @@ import type { NextFunction, Request, Response } from 'express';
 import { env, isProduction } from '../config/env.js';
 import { esAdministrador, Role, UserStatus } from '../domain/enums.js';
 import { ForbiddenError, UnauthorizedError } from '../domain/errors.js';
-import { findSessionUser } from '../repositories/usuario.repository.js';
+import { sessionUser } from '../services/session-cache.js';
 import { borrarSesion, leerSesion } from '../services/session.service.js';
 
 // Mismo origen (o el servidor de Vite en desarrollo). Lo usan la protección CSRF y el canal en vivo del administrador.
@@ -25,7 +25,7 @@ export function mismaProcedencia(request: Request, _response: Response, next: Ne
 export async function requireAuth(request: Request, response: Response, next: NextFunction): Promise<void> {
   const session = leerSesion(request);
   if (!session) throw new UnauthorizedError();
-  const usuario = await findSessionUser(session.userId);
+  const usuario = await sessionUser(session.userId);
   if (!usuario || usuario.estado !== UserStatus.ACTIVE || usuario.versionSesion !== session.version) {
     borrarSesion(response);
     throw new UnauthorizedError('La sesión ya no está activa.', 'SESSION_INVALID');

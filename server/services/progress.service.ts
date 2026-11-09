@@ -135,14 +135,15 @@ function assignExercises(modules: CatalogModule[], userId: string): CatalogModul
 // Con sync, el estado guardado se alinea con el efectivo (excepciones vencidas o revocadas, desbloqueos)
 // para que las métricas en SQL lo reflejen. Un módulo aprobado o inactivo conserva su estado guardado.
 export async function loadSnapshot(db: Db, userId: string, now = new Date(), options: { sync?: boolean; healed?: boolean } = {}): Promise<TrainingSnapshot> {
-  let state = await loadRaw(db, userId);
+  // El estado de la formación y los datos de certificación son independientes: se piden a la vez.
+  const [loaded, facts] = await Promise.all([loadRaw(db, userId), loadCertificationFacts(db, userId)]);
+  let state = loaded;
   if (state.moduleProgress.length < state.modules.length) {
     await initializeForUser(db, userId, state.modules);
     state = await loadRaw(db, userId);
   }
   const { moduleProgress, activityProgress, seals, overrides, evaluations, attempts, attemptLimits } = state;
   const modules = assignExercises(state.modules, userId);
-  const facts = await loadCertificationFacts(db, userId);
   const sealedModuleIds = new Set(seals.map((seal) => seal.moduleId));
   const certificateModule = modules.find((module) => module.slug === CERTIFICATE_MODULE_SLUG);
   const certification = certificationStatusOf({
