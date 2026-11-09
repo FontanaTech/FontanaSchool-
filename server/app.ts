@@ -49,5 +49,10 @@ app.use('/api/media', mediaRouter);
 app.use('/api/admin', adminRouter);
 app.use('/api', apiNotFound);
 
+// En desarrollo (`npm run dev`) la interfaz vive en Vite: si alguien abre este puerto, se le lleva allí para que
+// siempre vea el código actual y no la carpeta `dist` compilada hace tiempo.
+if (process.argv.includes('--dev')) {
+  app.get(/^\/(?!api\/).*/, (request, response) => response.redirect(302, `http://127.0.0.1:5173${request.originalUrl}`));
+}
 mountWebView(app, path.join(projectRoot, 'dist'));
 app.use(errorHandler);

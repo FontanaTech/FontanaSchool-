@@ -8,7 +8,7 @@
 .tipifica-lead strong { color: var(--red); }
 
 /* Pantalla tipo monitor */
-.tipifica-screen { display: grid; grid-template-rows: auto auto minmax(0, 1fr); overflow: hidden; border: 1px solid #1f2a3733; border-radius: 18px; background: #11161f; box-shadow: 0 24px 50px #1f2a3730, 0 0 0 6px #ffffff; }
+.tipifica-screen { position: relative; display: grid; grid-template-rows: auto auto minmax(0, 1fr); overflow: hidden; border: 1px solid #1f2a3733; border-radius: 18px; background: #11161f; box-shadow: 0 24px 50px #1f2a3730, 0 0 0 6px #ffffff; }
 .tipifica-screen__bar { display: flex; align-items: center; gap: 14px; padding: 9px 16px; background: #1b2230; }
 .tipifica-dots { display: inline-flex; gap: 6px; }
 .tipifica-dots i { width: 11px; height: 11px; border-radius: 50%; background: #ff5f57; }
@@ -115,3 +115,5 @@ body:has(.tipifica) .auth-account .text-button { padding: 9px 13px; border: 1px 
 body:has(.tipifica) .auth-intro { display: none; }
 body:has(.tipifica) .auth-main { max-width: 1560px; padding: 32px 28px 80px; }
 @media (max-width: 600px) { body:has(.tipifica) .auth-main { padding: 22px 12px 60px; } }
+
+/* Aviso de ejercicio completado y resultados finales (dentro de la pantalla de práctica) */

@@ -1,5 +1,5 @@
 import type { NextFunction, Request, Response } from 'express';
-import { isProduction } from '../config/env.js';
+import { env, isProduction } from '../config/env.js';
 import { esAdministrador, Role, UserStatus } from '../domain/enums.js';
 import { ForbiddenError, UnauthorizedError } from '../domain/errors.js';
 import { findSessionUser } from '../repositories/usuario.repository.js';
@@ -14,7 +14,7 @@ export function mismaProcedencia(request: Request, _response: Response, next: Ne
   if (!origin || !host) throw denied;
   let parsed: URL;
   try { parsed = new URL(origin); } catch { throw denied; }
-  const localVite = !isProduction && parsed.origin === 'http://127.0.0.1:5173' && host === '127.0.0.1:3000';
+  const localVite = !isProduction && parsed.origin === 'http://127.0.0.1:5173' && host === `127.0.0.1:${env.PORT}`;
   if ((!localVite && parsed.host !== host) || !['http:', 'https:'].includes(parsed.protocol)) throw denied;
   next();
 }

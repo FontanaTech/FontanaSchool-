@@ -1784,3 +1784,15 @@ ul.sim-help-list {
 @keyframes sim-fade-out { to { opacity: 0; } }
 @keyframes sim-pop-in { from { opacity: 0; transform: translateY(8px) scale(0.98); } }
 @keyframes sim-toast-out { to { opacity: 0; transform: translateY(6px); } }
+/* ---------- Calificación de un ejercicio oficial ---------- */
+.sim-grading { position: fixed; inset: 0; z-index: 90; display: grid; place-items: center; background: rgb(15 23 42 / 0.7); animation: sim-fade-in 0.15s ease-out; }
+.sim-grading__card { display: grid; justify-items: center; gap: 10px; padding: 32px 44px; border-radius: 16px; background: var(--sim-surface); box-shadow: var(--sim-shadow-pop); text-align: center; }
+.sim-grading__spinner { width: 56px; height: 56px; border-radius: 50%; border: 6px solid #d5dde8; border-top-color: #1d4ed8; animation: sim-spin 0.8s linear infinite; }
+.sim-grading__title { font-size: 20px; font-weight: 700; }
+.sim-grading__sub { color: var(--sim-ink-muted); font-size: 14px; }
+@keyframes sim-spin { to { transform: rotate(360deg); } }
+.sim-done { display: grid; justify-items: center; gap: 8px; text-align: center; }
+.sim-done__check { display: grid; place-items: center; width: 72px; height: 72px; border-radius: 50%; background: #1f8a4c; color: #fff; font-size: 44px; font-weight: 700; animation: sim-pop-in 0.3s ease-out; }
+.sim-done__text { font-size: 17px; font-weight: 600; }
+.sim-done__score { font-size: 16px; }
+@media (prefers-reduced-motion: reduce) { .sim-grading__spinner { animation-duration: 2s; } }

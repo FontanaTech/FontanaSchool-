@@ -4,7 +4,6 @@
 export const FINAL_EXAM_BANK_VERSION = 1;
 
 export const FINAL_EXAM_TOPICS = {
-  institucional: 'Conocimiento institucional',
   conceptos: 'Conceptos básicos de cobranza',
   etapas: 'Etapas y procedimiento de la gestión',
   tipos: 'Tipos de cobranza',
@@ -31,60 +30,6 @@ export interface FinalExamQuestion {
 }
 
 export const FINAL_EXAM_BANK: readonly FinalExamQuestion[] = [
-  // ── Conocimiento institucional ──────────────────────────────────────────────────────────
-  {
-    id: 'v1-institucional-01', topic: 'institucional',
-    prompt: '¿Cuándo y dónde comenzó Fontana?',
-    options: [
-      'En 2018, en el edificio Gran Colombia.',
-      'En 2022, en el piso 11 de Plaza Oriental.',
-      'En 2018, en el piso 17 de Plaza Oriental.',
-      'En 2023, en una sede ubicada en Bogotá.',
-    ],
-    answer: 0,
-    explanation: 'Fontana nació en 2018 en el edificio Gran Colombia, con menos de cinco negociadores y una sola cartera.',
-    source: 'index.html',
-  },
-  {
-    id: 'v1-institucional-02', topic: 'institucional',
-    prompt: '¿Por qué llegó Fontana a Bogotá, un año después de abrir el piso 11?',
-    options: [
-      'Para iniciar la compra de carteras propias.',
-      'Para atender a un cliente de telecomunicaciones.',
-      'Para incorporar coordinadores a la operación.',
-      'Para trasladar la sede del edificio Gran Colombia.',
-    ],
-    answer: 1,
-    explanation: 'Un año después de abrir el piso 11, Fontana llegó a Bogotá para atender a un cliente de telecomunicaciones.',
-    source: 'index.html',
-  },
-  {
-    id: 'v1-institucional-03', topic: 'institucional',
-    prompt: '¿Qué idea de «Una carta a García», de Elbert Hubbard, se aplica en el trabajo de Fontana?',
-    options: [
-      'Esperar instrucciones detalladas antes de actuar en cada caso.',
-      'Delegar en el coordinador las gestiones más difíciles.',
-      'Tomar la iniciativa y llevar cada tarea hasta su término.',
-      'Priorizar la rapidez de la gestión sobre su seguimiento.',
-    ],
-    answer: 2,
-    explanation: 'El ensayo invita a tomar la iniciativa y asumir con responsabilidad una tarea hasta llevarla a término.',
-    source: 'index.html',
-  },
-  {
-    id: 'v1-institucional-04', topic: 'institucional',
-    prompt: 'Además de ampliar la operación al piso 10 de Plaza Oriental, ¿qué incorporó Fontana en su presente?',
-    options: [
-      'Una sede propia en Plaza Oriental.',
-      'Un segundo cliente de telecomunicaciones.',
-      'Un área externa de asesoría jurídica.',
-      'La compra de carteras propias.',
-    ],
-    answer: 3,
-    explanation: 'Hoy Fontana amplió su operación al piso 10 e incorporó la compra de carteras propias; tener espacios propios es parte de su visión.',
-    source: 'index.html',
-  },
-
   // ── Conceptos básicos ───────────────────────────────────────────────────────────────────
   {
     id: 'v1-conceptos-01', topic: 'conceptos',

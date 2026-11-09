@@ -98,7 +98,6 @@ export async function mountTipifica(container: HTMLElement, backHref: string, mo
   };
 
   async function loadState(): Promise<void> {
-    const wasPassed = state?.passed ?? null;
     try {
       state = (await api<{ data: TipificaState }>('/training/tipifica')).data;
     } catch (error) {
@@ -107,12 +106,19 @@ export async function mountTipifica(container: HTMLElement, backHref: string, mo
     }
     renderOfficial();
     sendState();
-    if (wasPassed === false && state.passed) {
-      await playSeal({ moduleName: 'Tipifica', moduleNumber: moduleOrder, label: 'COMPLETADO', nextName: 'Examen general' });
-      // Tras el sello, directo a la ruta del aula, donde espera el examen general.
-      location.assign(backHref);
-    }
   }
+
+  // El asesor cerró los resultados finales dentro del simulador: se sale del simulador, se da el sello y se pasa al examen final.
+  let finishing = false;
+  const finish = async (): Promise<void> => {
+    if (finishing) return;
+    finishing = true;
+    if (document.fullscreenElement) await document.exitFullscreen().catch(() => undefined);
+    screen.classList.remove('is-expanded');
+    syncFull();
+    await playSeal({ moduleName: 'Tipifica', moduleNumber: moduleOrder, label: 'COMPLETADO', nextName: 'Examen general' });
+    location.assign(state?.nextRoute ?? backHref);
+  };
 
   // Respuestas al clon: { requestId, ok, data | error, state }.
   const reply = (requestId: string, payload: { ok: boolean; data?: unknown; error?: string }): void => {
@@ -158,6 +164,8 @@ export async function mountTipifica(container: HTMLElement, backHref: string, mo
     if (event.origin !== location.origin || event.source !== frame.contentWindow) return;
     const data = event.data as { type?: string; total?: number; requestId?: string; number?: number; draft?: Record<string, unknown> } | null;
     if (data?.type === 'tipifica:listo') sendState();
+    // El asesor cerró los resultados finales en el clon.
+    if (data?.type === 'tipifica:resultados') void finish();
     if (data?.type === 'tipifica:gestion' && typeof data.total === 'number') {
       counter.textContent = `${data.total} ${data.total === 1 ? 'gestión guardada' : 'gestiones guardadas'} en tu práctica`;
     }

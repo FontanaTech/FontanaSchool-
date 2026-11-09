@@ -23,10 +23,13 @@ export default defineConfig({
     // Transforma las entradas al arrancar: la primera carga no espera a que la unidad de red responda archivo por archivo.
     warmup: { clientFiles: ['./src/main.ts', './src/simulador/main.ts'] },
     proxy: {
-      '/api': 'http://127.0.0.1:3000',
+      '/api': 'http://127.0.0.1:3001',
     },
     // Carpetas que no son del frontend: vigilarlas provocaba recargas masivas y reinicios de Vite.
     watch: {
+      // La carpeta está en una unidad de red de Windows, donde fs.watch falla ("file watcher error: UNKNOWN").
+      usePolling: true,
+      interval: 500,
       ignored: (file) => {
         const path = file.replace(/\\/g, '/');
         if (/(?:^|\/)(?:\.local|\.mergejuan|\.mergemain|server-dist|prisma|dist|docs-assets|documentacion)(?:\/|$)/.test(path) || /(?:^|\/)\.env$/.test(path)) return true;

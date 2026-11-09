@@ -9,7 +9,7 @@ import type { Evaluation } from '../../domain/expert/engine';
 import type { CustomerView } from '../../types/simulator';
 import { EXERCISE_PORTFOLIO, EXERCISES, type Exercise } from '../../domain/expert/exercises';
 import {
-  assignedNumbers, isEmbedded, isOfficial, isOfficialExercise, officialExercise, officialState, toEvaluation, type OfficialExercise,
+  assignedNumbers, isEmbedded, isOfficial, isOfficialExercise, notifyResults, officialExercise, officialState, toEvaluation, type OfficialExercise,
 } from '../../domain/expert/official';
 
 /** Las llamadas de la prueba de este asesor: las dos que le tocaron (oficial) o las seis (práctica libre). */
@@ -26,6 +26,10 @@ export interface PracticePanel {
   showEvaluation(evaluation: Evaluation, official?: OfficialExercise | null): void;
   /** Vuelve a dibujar el panel cuando llega (o cambia) el estado oficial de la prueba. */
   refreshOfficial(): void;
+  /** Pasa al siguiente ejercicio, o a los resultados si era el último. */
+  goNext(): void;
+  /** ¿Es el último ejercicio de la prueba? */
+  isLast: boolean;
   cleanup: Cleanup;
 }
 
@@ -64,7 +68,9 @@ async function showSummary(ctx: SimContext): Promise<void> {
   ctx.store.endPractice();
   if (official) {
     const pendingRows = official.exercises.filter((e) => !e.result).length;
+    const embedded = isEmbedded();
     await openModal(ctx.root, {
+      actions: embedded ? [{ label: 'Continuar al examen final', value: 'finish', kind: 'primary' }] : undefined,
       title: 'Tu prueba oficial de tipificación',
       wide: true,
       body: `
@@ -74,6 +80,8 @@ async function showSummary(ctx: SimContext): Promise<void> {
         </tbody></table>
         <p class="sim-help">${official.passed ? 'Completaste tus ejercicios de tipificación. Tu conocimiento se confirma en el examen general: ya puedes presentarlo.' : pendingRows ? 'Aún tienes ejercicios por presentar. Cada uno se presenta una sola vez.' : ''}</p>`,
     });
+    // Dentro de la plataforma, cerrar los resultados saca al asesor del simulador hacia el examen final.
+    if (embedded) notifyResults();
     return;
   }
   const results = ctx.store.get().practice.results;
@@ -214,7 +222,16 @@ export function mountPracticePanel(host: HTMLElement, ctx: SimContext, exercise:
   };
   showSaved();
 
+  const goNext = (): void => {
+    if (!isLast) ctx.navigate(`/cartera/${EXERCISE_PORTFOLIO}/cliente/${list[position + 1]!.customer.id}`);
+    // Dentro de la plataforma los resultados finales los muestra la página (con el paso al examen final).
+    else if (isEmbedded() && isOfficial()) notifyResults();
+    else void showSummary(ctx);
+  };
+
   return {
+    isLast,
+    goNext,
     showEvaluation(evaluation, officialInfo) {
       const missing = evaluation.items.filter((i) => !i.ok).map((i) => i.label);
       const attempts = officialInfo ? 1 : ctx.store.recordPractice(exercise.id, evaluation.score, evaluation.approved, missing).attempts;
@@ -242,8 +259,7 @@ export function mountPracticePanel(host: HTMLElement, ctx: SimContext, exercise:
         } else if (action === 'checks') {
           host.querySelector('.sim-practice')?.scrollIntoView({ block: 'start', behavior: 'smooth' });
         } else if (action === 'next') {
-          if (isLast) void showSummary(ctx);
-          else ctx.navigate(`/cartera/${EXERCISE_PORTFOLIO}/cliente/${list[position + 1]!.customer.id}`);
+          goNext();
         }
       })),
     ]),

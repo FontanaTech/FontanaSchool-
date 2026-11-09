@@ -16,6 +16,7 @@ import {
 } from '../components/customer-file/templates';
 import { mountTypificationForm } from '../components/customer-file/TypificationForm';
 import { hydrateIcons, icon } from '../components/icons';
+import { openModal } from '../components/Modal';
 import type { SimContext } from '../context';
 import { hms, splitDuration, stableHash } from '../domain/control-next';
 import { applyCustomerFilters } from '../domain/customer-filters';
@@ -75,7 +76,6 @@ function pageTemplate(ctx: SimContext, portfolio: Portfolio, v: CustomerView, in
             <button type="button" role="tab" class="is-active" aria-selected="true" data-gtab="gestion">Gestion</button>
             <button type="button" role="tab" aria-selected="false" data-gtab="acuerdos">Acuerdos</button>
           </div>
-          <button type="button" class="sim-mic" data-action="mic" aria-label="Grabación de la llamada" data-sim-guide="ficha.mic">${icon('Mic')}</button>
         </div>
         <div data-gpanel="gestion" data-form-slot></div>
         <div data-expert-result aria-live="polite"></div>
@@ -208,22 +208,52 @@ export function renderCustomerFilePage(ctx: SimContext, container: HTMLElement, 
 
   // Entrega oficial: confirma, la califica el servidor y deja el ejercicio cerrado. Un error de red no consume el
   // intento dos veces: si ya quedó guardado, el servidor devuelve el mismo resultado.
+  // Pantalla de carga mientras el servidor califica el ejercicio.
+  function showGrading(root: HTMLElement): HTMLElement {
+    const overlay = document.createElement('div');
+    overlay.className = 'sim-grading';
+    overlay.setAttribute('role', 'alertdialog');
+    overlay.setAttribute('aria-busy', 'true');
+    overlay.setAttribute('aria-label', 'Calificando tu ejercicio');
+    overlay.innerHTML = '<div class="sim-grading__card"><span class="sim-grading__spinner" aria-hidden="true"></span><p class="sim-grading__title">Calificando tu ejercicio…</p><p class="sim-grading__sub">No cierres ni recargues la pantalla.</p></div>';
+    root.append(overlay);
+    return overlay;
+  }
+
   async function submitOfficialExercise(draft: TypificationDraft): Promise<void> {
     if (!exercise || !practice) return;
     const ok = await ctx.confirm({ title: 'Entregar ejercicio oficial', message: 'Tienes un solo intento por ejercicio. ¿Revisaste el audio y tu tipificación? Al guardar se califica y queda registrado.', confirmLabel: 'Guardar y calificar' });
     if (!ok) return;
     form.setLocked(true);
+    const loading = showGrading(ctx.root);
     try {
-      const { result, alreadySubmitted } = await submitOfficial(exercise.number, draft);
+      // Al menos un instante en pantalla: así se nota que se está calificando y no parece que no pasó nada.
+      const [{ result, alreadySubmitted }] = await Promise.all([submitOfficial(exercise.number, draft), new Promise((resolve) => setTimeout(resolve, 1200))]);
       ctx.store.clearOfficialManagements(customerId);
       form.reset();
       const info = officialExercise(exercise.number);
       practice.showEvaluation(toEvaluation(result), info);
       form.setLocked(!info?.canSubmit);
-      ctx.toast(alreadySubmitted ? 'Este ejercicio ya estaba entregado: ves tu resultado guardado.' : 'Ejercicio entregado. Tu resultado quedó registrado.', alreadySubmitted ? 'info' : 'success');
+      loading.remove();
+      const evaluation = toEvaluation(result);
+      const last = practice.isLast;
+      const choice = await openModal(ctx.root, {
+        title: `¡Ejercicio ${exercise.number} completado!`,
+        body: `
+          <div class="sim-done">
+            <p class="sim-done__check" aria-hidden="true">✓</p>
+            <p class="sim-done__text">${alreadySubmitted ? 'Este ejercicio ya estaba entregado: este es tu resultado guardado.' : 'Tu ejercicio fue calificado y quedó registrado.'}</p>
+            <p class="sim-done__score"><strong>${evaluation.passed} de ${evaluation.total}</strong> puntos coinciden con la llamada · <strong>${evaluation.score} %</strong></p>
+            <p class="sim-help">${last ? 'Era el último ejercicio: a continuación verás los resultados de toda la prueba.' : 'A continuación pasas al siguiente ejercicio.'}</p>
+          </div>`,
+        actions: [{ label: last ? 'Ver resultados' : 'Ir al siguiente ejercicio', value: 'next', kind: 'primary' }],
+      });
+      if (choice === 'next') practice.goNext();
     } catch (error) {
       form.setLocked(false);
       ctx.toast((error as Error).message, 'error');
+    } finally {
+      loading.remove();
     }
   }
 
@@ -298,7 +328,6 @@ export function renderCustomerFilePage(ctx: SimContext, container: HTMLElement, 
     payments: () => showPayments(ctx, current()),
     redial,
     voicemail,
-    mic: () => ctx.toast('En Control Next las llamadas se graban. En la práctica no se graba audio.', 'info'),
     audio: () => ctx.toast('Aquí escucharías la grabación de esa llamada (no disponible en la práctica).', 'info'),
     'hist-prev': () => { histPage -= 1; renderHistory(); },
     'hist-next': () => { histPage += 1; renderHistory(); },

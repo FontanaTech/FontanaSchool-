@@ -132,11 +132,6 @@ export const GUIDE_STEPS: Record<GuideView, GuideStep[]> = {
       text: 'La obligación: número de cliente, cuenta, edad de cobranza (franja de mora), valor vencido, intereses de mora, saldo total y honorarios. El botón ⓘ muestra las referencias. «Adicionales» trae producto, días de mora y correo. Ten estas cifras a mano antes de negociar.',
     },
     {
-      target: 'ficha.mic',
-      title: 'Grabación',
-      text: 'Las llamadas quedan grabadas y se pueden escuchar desde el histórico. Habla siempre con respeto y sin prometer lo que no puedes cumplir.',
-    },
-    {
       target: 'ficha.tiempo',
       title: 'Tiempo de Gestión',
       text: 'Cuenta horas, minutos y segundos desde que abriste la ficha. Mide cuánto tardas en cada gestión.',

@@ -238,17 +238,6 @@
 .sim-pills { display: inline-flex; gap: 2px; padding: 2px; border: 1px solid #e3e5e8; border-radius: 999px; }
 .sim-pills button { border-radius: 999px; padding: 8px 24px; }
 .sim-pills button.is-active { background: var(--cn-teal-ink); color: #fff; }
-.sim-mic {
-  display: grid;
-  place-items: center;
-  width: 36px;
-  height: 36px;
-  border: 2px solid #222;
-  border-radius: 50%;
-  background: #fff;
-  font-size: 17px;
-  cursor: pointer;
-}
 .sim-cn-form { display: grid; gap: 10px; }
 .sim-cn-form__title { display: flex; align-items: center; gap: 6px; font-size: 15px; }
 .sim-cn-form__time-row { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 18px; }

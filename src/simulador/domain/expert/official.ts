@@ -126,6 +126,11 @@ export async function submitOfficial(number: number, draft: TypificationDraft): 
   return reply.data as { result: OfficialResult; alreadySubmitted: boolean };
 }
 
+/** Avisa a la plataforma que el asesor terminó el último ejercicio y quiere ver sus resultados. */
+export function notifyResults(): void {
+  window.parent.postMessage({ type: 'tipifica:resultados' }, location.origin);
+}
+
 /** Registra que el asesor abrió el ejercicio (fecha de inicio del intento). No consume intentos. */
 export function notifyOpened(number: number): void {
   if (isOfficial()) void ask('tipifica:abrir', { number });
