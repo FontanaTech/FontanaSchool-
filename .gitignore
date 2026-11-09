@@ -7,7 +7,7 @@ server-dist/
 .env.*
 !.env.example
 
-desktop/
+/desktop/
 
 # Documentación local del proyecto
 /documentacion/

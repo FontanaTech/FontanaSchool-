@@ -31,6 +31,8 @@ const schema = z.object({
   OLLAMA_TIMEOUT_MS: z.coerce.number().int().min(500).max(30000).default(5000),
   // Solo desarrollo y pruebas: reproduce el dictado con la voz del navegador cuando no hay audio autorizado.
   DICTATION_DEV_TTS: booleanFlag,
+  // Aplicación de escritorio (Electron): el servidor corre en el mismo equipo y se abre en http://localhost.
+  DESKTOP: booleanFlag,
 }).superRefine((value, context) => {
   if (value.NODE_ENV === 'production' && (!value.SESSION_SECRET || value.SESSION_SECRET.length < 32)) {
     context.addIssue({ code: 'custom', path: ['SESSION_SECRET'], message: 'SESSION_SECRET debe tener al menos 32 caracteres en producción.' });

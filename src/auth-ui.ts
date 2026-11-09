@@ -105,6 +105,8 @@ function formularioLogin(): void {
   aplicarEstiloAcceso();
   document.body.classList.add('auth-login-entry');
   document.querySelector('.auth-header')!.remove();
+  // Aplicación de escritorio: botón para traer la última versión publicada desde main.
+  void import('./desktop-update').then(({ mountDesktopUpdate }) => mountDesktopUpdate(document.querySelector<HTMLElement>('.login-card')!));
   const form = document.querySelector<HTMLFormElement>('#login-form')!;
   const passwordInput = form.elements.namedItem('password') as HTMLInputElement;
   const passwordToggle = form.querySelector<HTMLButtonElement>('.password-toggle')!;

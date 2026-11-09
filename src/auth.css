@@ -311,3 +311,10 @@ body.auth-login {
   .login-aula-brand { gap: 14px; }
   .login-aula-brand img { width: 150px; }
 }
+
+/* Aplicación de escritorio: buscar e instalar actualizaciones desde el inicio de sesión. */
+.desktop-update { margin-top: 18px; padding-top: 14px; border-top: 1px solid #ffffff22; display: grid; gap: 8px; }
+.desktop-update__button { justify-self: start; padding: 9px 16px; border: 1px solid #f3d27a88; border-radius: 10px; background: transparent; color: #f3d27a; font: inherit; font-weight: 700; cursor: pointer; }
+.desktop-update__button:hover:not(:disabled) { background: #f3d27a1a; }
+.desktop-update__button:disabled { opacity: .6; cursor: progress; }
+.desktop-update__status { margin: 0; font-size: 13px; color: #d7deea; min-height: 1em; }

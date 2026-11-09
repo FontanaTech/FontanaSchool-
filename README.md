@@ -322,3 +322,15 @@ Sin proveedor real. Si `TYPING_WEBHOOK_SECRET` no está definido responde 404. S
 ## Documentación local
 
 La carpeta `documentacion/` es local y está en `.gitignore`. Al hacer pull de este cambio, Git la eliminará de las copias que no la tengan modificada: respáldala antes o recupérala con `git show 949dece^:documentacion/<archivo>`. Lo que seguía vigente de esos archivos está en este README.
+
+## Aplicación de escritorio (Electron)
+
+El instalador `.exe` incluye la aplicación compilada, los audios del dictado (`storage/`) y la conexión a la base de datos (uso corporativo interno). La conexión sale del `.env` del equipo que genera el instalador y **nunca se sube a GitHub**.
+
+- `npm run desktop:instalador`: compila la interfaz y el servidor, arma `FontanaSchool-Setup-<versión>.exe` y lo deja en la carpeta **Descargas**. Requiere un `.env` con `DATABASE_URL` y un `SESSION_SECRET` de al menos 32 caracteres.
+- `npm run desktop:publicar`: lo mismo y además publica la versión compilada (sin la conexión) como release `desktop-…` en GitHub. Solo desde `main` y sin cambios pendientes. Usa la sesión de GitHub que ya tiene git en el equipo.
+- `npm run desktop:actualizacion`: solo publica la actualización, sin armar el instalador.
+
+En la aplicación instalada, el botón **«Buscar actualizaciones»** del inicio de sesión consulta el último release `desktop-…`, lo descarga y reinicia la aplicación con esa versión. Si el cambio toca la aplicación de escritorio en sí (`electron/`), hay que reinstalar con un instalador nuevo.
+
+El servidor corre dentro de la aplicación en `http://localhost:3087`. Los archivos de compilación quedan en `%TEMP%\fontana-desktop-build`.

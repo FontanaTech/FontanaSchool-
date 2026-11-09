@@ -13,7 +13,8 @@ function signature(value: string): string {
 }
 
 function cookieOptions() {
-  return { httpOnly: true, secure: isProduction, sameSite: 'lax' as const, path: '/' };
+  // En la app de escritorio la página es http://localhost (mismo equipo): la cookie no puede exigir HTTPS.
+  return { httpOnly: true, secure: isProduction && !env.DESKTOP, sameSite: 'lax' as const, path: '/' };
 }
 
 export function firmarSesion(userId: string, version: number, expires = Date.now() + SESSION_LIFETIME_MS): string {

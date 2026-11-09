@@ -28,7 +28,10 @@
     "db:seed:demo:clean": "tsx prisma/seed-demo.ts --clean",
     "test": "vitest run",
     "test:unit": "vitest run --config vitest.unit.config.ts",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "desktop:instalador": "node scripts/desktop/build.mjs",
+    "desktop:publicar": "node scripts/desktop/build.mjs --publish",
+    "desktop:actualizacion": "node scripts/desktop/build.mjs --publish --no-installer"
   },
   "devDependencies": {
     "@types/compression": "^1.7.5",
@@ -37,6 +40,8 @@
     "@types/supertest": "7.2.1",
     "@types/ws": "^8.5.12",
     "concurrently": "^9.2.1",
+    "electron": "^35.7.5",
+    "electron-builder": "^26.0.12",
     "prisma": "6.19.0",
     "sharp": "^0.35.5",
     "supertest": "7.3.0",
