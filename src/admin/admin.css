@@ -308,3 +308,40 @@
 .admin-live { margin: 14px 0 0; font-size: .8rem; font-weight: 600; }
 .admin-live[data-state="on"] { color: #1f6b3a; }
 .admin-live[data-state="off"] { color: #8a96a3; }
+
+/* ---------------------------------------------------------------------------------------------
+   Panel a pantalla completa. renderAdmin marca .admin-layout con data-viewport (ancho de la ventana) y data-content
+   (ancho real del área de contenido) usando un ResizeObserver; estas reglas acomodan el panel según ese espacio. */
+body.admin-screen .auth-main { max-width: none; padding: 22px clamp(14px, 2vw, 32px) 56px; }
+body.admin-screen .auth-intro { margin-bottom: 18px; }
+body.admin-screen .auth-intro h1 { font-size: clamp(24px, 2.4vw, 34px); margin: 6px 0 4px; }
+.admin-layout { grid-template-columns: 220px minmax(0, 1fr); gap: 22px; }
+.admin-layout .admin-nav { position: sticky; top: 16px; max-height: calc(100vh - 32px); overflow-y: auto; align-self: start; }
+.admin-layout .admin-card { padding: clamp(16px, 1.6vw, 28px); }
+
+/* Tablas: más filas a la vista y columnas que se ajustan en lugar de forzar el desplazamiento lateral. */
+.admin-content .table-wrap th, .admin-content .table-wrap td { padding: 10px 12px; vertical-align: middle; }
+.admin-content .table-wrap td:last-child { white-space: normal; }
+.admin-content .table-wrap td:last-child .row-action { margin: 2px 4px 2px 0; }
+
+/* Ventana amplia: todas las columnas y los botones de acción en una sola línea. */
+.admin-layout[data-content="wide"] .table-wrap table { width: 100%; table-layout: auto; }
+.admin-layout[data-content="wide"] .table-wrap td:last-child { white-space: nowrap; }
+
+/* Espacio medio: menú más angosto, letra un poco menor y textos largos en varias líneas. */
+.admin-layout[data-viewport="medium"] { grid-template-columns: 190px minmax(0, 1fr); gap: 16px; }
+.admin-layout[data-viewport="medium"] .admin-nav { padding: 16px; gap: 8px; }
+.admin-layout[data-viewport="medium"] .admin-nav a { padding: 9px 10px; }
+.admin-layout[data-content="medium"] .table-wrap table { font-size: 14px; }
+.admin-layout[data-content="medium"] .table-wrap td { white-space: normal; }
+.admin-layout[data-content="medium"] .table-wrap td:last-child .row-action { margin: 3px 4px 3px 0; }
+
+/* Pantalla angosta: el menú pasa arriba como barra horizontal y las acciones se apilan. */
+.admin-layout[data-viewport="compact"] { grid-template-columns: minmax(0, 1fr); }
+.admin-layout[data-viewport="compact"] .admin-nav { display: flex; position: static; max-height: none; overflow-x: auto; gap: 6px; padding: 10px; border-radius: 12px; white-space: nowrap; }
+.admin-layout[data-viewport="compact"] .admin-nav :is(strong, p:not(.admin-live)) { display: none; }
+.admin-layout[data-viewport="compact"] .admin-nav .admin-live { margin: 0 0 0 auto; align-self: center; }
+.admin-layout[data-content="compact"] .table-wrap table { font-size: 14px; }
+.admin-layout[data-content="compact"] .table-wrap td { white-space: normal; }
+.admin-layout[data-content="compact"] .table-wrap td:last-child { min-width: 150px; }
+.admin-layout[data-content="compact"] .table-wrap td:last-child .row-action { display: block; width: 100%; margin: 4px 0; }

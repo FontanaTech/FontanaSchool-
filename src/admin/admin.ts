@@ -673,6 +673,21 @@ export function renderAdmin(shell: Shell): void {
     else await advisorsSection(view);
   }
 
+  // Adaptación a la pantalla: el panel ocupa todo el ancho disponible y un observador del tamaño marca el espacio
+  // real del contenido (compacto, medio o amplio). El CSS usa esa marca para acomodar el menú, las tablas y los botones.
+  document.body.classList.add('admin-screen');
+  const layout = document.querySelector<HTMLElement>('.admin-layout')!;
+  const sizeOf = (width: number): string => (width < 820 ? 'compact' : width < 1280 ? 'medium' : 'wide');
+  const applySize = (): void => {
+    const viewport = window.innerWidth;
+    layout.dataset.viewport = sizeOf(viewport);
+    const content = document.querySelector<HTMLElement>('.admin-content');
+    if (content) layout.dataset.content = content.clientWidth < 760 ? 'compact' : content.clientWidth < 1100 ? 'medium' : 'wide';
+  };
+  applySize();
+  if (typeof ResizeObserver === 'function') new ResizeObserver(() => applySize()).observe(layout);
+  else addEventListener('resize', applySize);
+
   async function route(): Promise<void> {
     const hash = location.hash || '#asesores';
     document.querySelectorAll<HTMLAnchorElement>('[data-nav]').forEach((link) => link.classList.toggle('selected', hash.startsWith(link.dataset.nav!) || (hash.startsWith('#ficha') && link.dataset.nav === '#asesores') || (hash.startsWith('#expediente') && link.dataset.nav === '#validacion')));
