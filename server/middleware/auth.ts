@@ -5,17 +5,19 @@ import { ForbiddenError, UnauthorizedError } from '../domain/errors.js';
 import { findSessionUser } from '../repositories/usuario.repository.js';
 import { borrarSesion, leerSesion } from '../services/session.service.js';
 
+// Mismo origen (o el servidor de Vite en desarrollo). Lo usan la protección CSRF y el canal en vivo del administrador.
+export function origenPermitido(origin: string | undefined, host: string | undefined): boolean {
+  if (!origin || !host) return false;
+  let parsed: URL;
+  try { parsed = new URL(origin); } catch { return false; }
+  const localVite = !isProduction && parsed.origin === 'http://127.0.0.1:5173' && host === `127.0.0.1:${env.PORT}`;
+  return (localVite || parsed.host === host) && ['http:', 'https:'].includes(parsed.protocol);
+}
+
 // Protección CSRF: las solicitudes que modifican datos deben venir del mismo origen.
 export function mismaProcedencia(request: Request, _response: Response, next: NextFunction): void {
   if (['GET', 'HEAD', 'OPTIONS'].includes(request.method)) { next(); return; }
-  const origin = request.get('origin');
-  const host = request.get('host');
-  const denied = new ForbiddenError('Origen no permitido.', 'ORIGIN_NOT_ALLOWED');
-  if (!origin || !host) throw denied;
-  let parsed: URL;
-  try { parsed = new URL(origin); } catch { throw denied; }
-  const localVite = !isProduction && parsed.origin === 'http://127.0.0.1:5173' && host === `127.0.0.1:${env.PORT}`;
-  if ((!localVite && parsed.host !== host) || !['http:', 'https:'].includes(parsed.protocol)) throw denied;
+  if (!origenPermitido(request.get('origin'), request.get('host'))) throw new ForbiddenError('Origen no permitido.', 'ORIGIN_NOT_ALLOWED');
   next();
 }
 

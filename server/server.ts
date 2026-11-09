@@ -1,6 +1,7 @@
 import { env } from './config/env.js';
 import { disconnect } from './config/prisma.js';
 import { app } from './app.js';
+import { attachAdminLive } from './realtime/admin-live.js';
 import { existeAdministrador } from './services/bootstrap-admin.service.js';
 
 // Nunca se imprimen contraseñas al arrancar: el administrador inicial se crea con el script CLI.
@@ -13,6 +14,8 @@ try {
 const server = app.listen(env.PORT, '0.0.0.0', () => {
   console.log(`Fontana School disponible en http://localhost:${env.PORT}`);
 });
+
+attachAdminLive(server);
 
 async function shutdown(signal: string): Promise<void> {
   console.log(`Cerrando servidor (${signal})...`);

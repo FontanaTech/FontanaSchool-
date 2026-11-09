@@ -303,3 +303,8 @@
 .perf-list, .perf-checks { list-style: none; margin: 10px 0 0; padding: 0; display: grid; gap: 10px; }
 .perf-list li { display: grid; gap: 2px; padding-bottom: 8px; border-bottom: 1px solid #e6ebf0; }
 .perf-checks li small { display: block; color: #5b6b7b; margin-left: 22px; }
+
+/* Indicador del canal en vivo */
+.admin-live { margin: 14px 0 0; font-size: .8rem; font-weight: 600; }
+.admin-live[data-state="on"] { color: #1f6b3a; }
+.admin-live[data-state="off"] { color: #8a96a3; }

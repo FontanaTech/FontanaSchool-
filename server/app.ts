@@ -17,6 +17,7 @@ import { evaluationRouter } from './routes/training-evaluation.routes.js';
 import { certificatesRouter } from './routes/certificates.routes.js';
 import { mediaRouter } from './routes/media.routes.js';
 import { mountWebView } from './views/web.view.js';
+import { publishChange } from './realtime/admin-live.js';
 
 const currentDirectory = path.dirname(fileURLToPath(import.meta.url));
 const projectRoot = path.resolve(currentDirectory, '..');
@@ -36,6 +37,11 @@ app.use('/api/integrations/typing', typingRouter);
 app.use(express.json({ limit: '1mb' }));
 app.use(express.urlencoded({ extended: false }));
 app.use('/api', mismaProcedencia);
+// Panel de administración en vivo: toda petición que modifica datos y termina bien avisa a los administradores conectados.
+app.use('/api', (request, response, next) => {
+  if (!['GET', 'HEAD', 'OPTIONS'].includes(request.method)) response.on('finish', () => { if (response.statusCode < 400) publishChange(); });
+  next();
+});
 
 app.use('/api/health', healthRouter);
 app.use('/api/auth', authRouter);

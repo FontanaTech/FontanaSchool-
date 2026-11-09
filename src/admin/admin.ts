@@ -651,6 +651,17 @@ export function renderAdmin(shell: Shell): void {
     <dialog id="admin-dialog" class="edit-dialog"></dialog>
     <div id="admin-busy" class="admin-busy" role="status" aria-live="polite" hidden><div><span class="admin-spinner" aria-hidden="true"></span><p>Guardando cambios…</p></div></div>`);
 
+  // Pinta la sección que corresponde al hash dentro de `view`.
+  async function renderInto(view: HTMLElement, hash: string): Promise<void> {
+    if (hash.startsWith('#ficha/')) await advisorFileSection(view, hash.slice('#ficha/'.length));
+    else if (hash.startsWith('#validacion') || hash.startsWith('#expediente/')) await certificationSection(view, hash, { askForm, run, feedback, rerender, empty });
+    else if (hash === '#modulos') await modulesSection(view);
+    else if (hash === '#ofimatica') await officeSection(view, { askForm, run, feedback, rerender, badge, empty });
+    else if (hash === '#metricas') await metricsSection(view);
+    else if (hash === '#auditoria') await auditSection(view);
+    else await advisorsSection(view);
+  }
+
   async function route(): Promise<void> {
     const hash = location.hash || '#asesores';
     document.querySelectorAll<HTMLAnchorElement>('[data-nav]').forEach((link) => link.classList.toggle('selected', hash.startsWith(link.dataset.nav!) || (hash.startsWith('#ficha') && link.dataset.nav === '#asesores') || (hash.startsWith('#expediente') && link.dataset.nav === '#validacion')));
@@ -660,18 +671,73 @@ export function renderAdmin(shell: Shell): void {
     view.innerHTML = '<p class="loading-note">Cargando…</p>';
     document.querySelector<HTMLElement>('#admin-feedback')!.hidden = true;
     try {
-      if (hash.startsWith('#ficha/')) await advisorFileSection(view, hash.slice('#ficha/'.length));
-      else if (hash.startsWith('#validacion') || hash.startsWith('#expediente/')) await certificationSection(view, hash, { askForm, run, feedback, rerender, empty });
-      else if (hash === '#modulos') await modulesSection(view);
-      else if (hash === '#ofimatica') await officeSection(view, { askForm, run, feedback, rerender, badge, empty });
-      else if (hash === '#metricas') await metricsSection(view);
-      else if (hash === '#auditoria') await auditSection(view);
-      else await advisorsSection(view);
+      await renderInto(view, hash);
     } catch (error) {
       view.innerHTML = '';
       feedback((error as Error).message, true);
     }
   }
+
+  // Actualización en vivo: vuelve a pintar la sección en segundo plano y cambia una por otra cuando está lista, sin el
+  // aviso de «Cargando…», conservando el desplazamiento y los detalles que el administrador tenga abiertos.
+  let refreshing = false;
+  async function liveRefresh(): Promise<void> {
+    const hash = location.hash || '#asesores';
+    const old = document.querySelector<HTMLElement>('#admin-view');
+    if (!old || hash.startsWith('#auditoria') || refreshing) return;
+    const active = document.activeElement as HTMLElement | null;
+    const editing = Boolean(active && old.contains(active) && /^(INPUT|TEXTAREA|SELECT)$/.test(active.tagName));
+    if (document.querySelector<HTMLDialogElement>('#admin-dialog')?.open || !document.querySelector<HTMLElement>('#admin-busy')!.hidden || editing) { scheduleLive(5000); return; }
+    refreshing = true;
+    const fresh = old.cloneNode(false) as HTMLElement;
+    fresh.hidden = true;
+    old.after(fresh);
+    const opened = [...old.querySelectorAll('details')].map((details) => details.open);
+    const scroll = window.scrollY;
+    try {
+      await renderInto(fresh, hash);
+      if ((location.hash || '#asesores') === hash) {
+        old.remove();
+        fresh.hidden = false;
+        fresh.querySelectorAll('details').forEach((details, index) => { if (opened[index]) details.open = true; });
+        window.scrollTo(0, scroll);
+      } else fresh.remove();
+    } catch {
+      fresh.remove(); // un fallo de red no borra lo que el administrador está viendo
+    } finally { refreshing = false; }
+  }
+  let liveTimer: number | undefined;
+  function scheduleLive(delay = 600): void {
+    window.clearTimeout(liveTimer);
+    liveTimer = window.setTimeout(() => void liveRefresh(), delay);
+  }
+
+  // Canal WebSocket: el servidor avisa cada cambio de datos. Si se cae, reintenta y mientras tanto consulta cada 30 s.
+  const liveBadge = document.createElement('p');
+  liveBadge.className = 'admin-live';
+  liveBadge.setAttribute('role', 'status');
+  document.querySelector('.admin-nav')?.append(liveBadge);
+  let retries = 0;
+  let fallback: number | undefined;
+  function setLive(connected: boolean): void {
+    liveBadge.dataset.state = connected ? 'on' : 'off';
+    liveBadge.textContent = connected ? '● En vivo con la base de datos' : '○ Reconectando…';
+  }
+  function connectLive(): void {
+    const socket = new WebSocket(`${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws/admin`);
+    socket.addEventListener('open', () => { retries = 0; window.clearInterval(fallback); setLive(true); scheduleLive(100); });
+    socket.addEventListener('message', (event) => {
+      try { if ((JSON.parse(String(event.data)) as { type?: string }).type === 'change') scheduleLive(); } catch { /* mensaje ajeno */ }
+    });
+    socket.addEventListener('close', () => {
+      setLive(false);
+      window.clearInterval(fallback);
+      fallback = window.setInterval(() => scheduleLive(100), 30_000);
+      window.setTimeout(connectLive, Math.min(30_000, 1000 * 2 ** retries++));
+    });
+  }
+  setLive(false);
+  connectLive();
   currentRoute = route;
   window.addEventListener('hashchange', () => void route());
   void route();

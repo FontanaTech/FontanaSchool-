@@ -24,6 +24,8 @@ export default defineConfig({
     warmup: { clientFiles: ['./src/main.ts', './src/simulador/main.ts'] },
     proxy: {
       '/api': 'http://127.0.0.1:3001',
+      // Canal en vivo del panel de administración (WebSocket).
+      '/ws': { target: 'http://127.0.0.1:3001', ws: true },
     },
     // Carpetas que no son del frontend: vigilarlas provocaba recargas masivas y reinicios de Vite.
     watch: {
