@@ -1,6 +1,7 @@
 import type { Prisma } from '@prisma/client';
 import { prisma, type Db } from '../config/prisma.js';
 import { OBJECTIONS_ATTEMPT_PREFIX, OBJECTIONS_BLOCKS, OBJECTIONS_KEYS, OBJECTIONS_NAME, OBJECTIONS_SLUG, OBJECTIONS_VERSION, type ObjectionsKey } from '../domain/objections.js';
+import { publicOptions } from '../domain/objections-options.js';
 import { gradeObjectionCase, gradeObjections, OBJECTIONS_CASES, OBJECTIONS_EXPERT_VERSION, readObjectionsPayload, type ObjectionCaseKey, type ObjectionsGrade } from '../domain/objections-expert.js';
 import { ConflictError, ForbiddenError, NotFoundError, ValidationError } from '../domain/errors.js';
 import { evaluationStatusOf, EVALUATION_STATUS_LABEL } from '../domain/evaluation-status.js';
@@ -65,7 +66,7 @@ export async function objectionsState(userId: string, db: Db = prisma) {
   return {
     name: OBJECTIONS_NAME, reviewMode: context.reviewMode, legacyCompleted: context.legacyCompleted,
     percent: complete ? 100 : attempts.length ? 50 : 0, complete, completedCount: 0, currentBlock: OBJECTIONS_KEYS[0],
-    blocks, cases: OBJECTIONS_CASES, nextRoute: complete && context.next?.enabled ? context.next.route : null, nextName: context.next?.name ?? null,
+    blocks, cases: OBJECTIONS_CASES.map(c => ({ ...c, options: publicOptions(c.key) })), nextRoute: complete && context.next?.enabled ? context.next.route : null, nextName: context.next?.name ?? null,
     exam: { activityId: context.activity.id, status, statusLabel: EVALUATION_STATUS_LABEL[status], minimumScore: Number(context.evaluation.minimumScore),
       maxAttempts: context.snapshot.attemptLimits.get(context.activity.id) ?? context.evaluation.maxAttempts,
       attemptsRemaining: context.availability.remaining, enabled: !context.reviewMode,

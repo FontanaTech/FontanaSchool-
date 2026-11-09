@@ -4,7 +4,7 @@ import { progressGuide } from '../progress-guide';
 import { api, escapar } from '../http';
 import { playSeal, stampSvg } from '../seal-animation';
 import { bindReactivation, reactivationNotice } from '../reactivation';
-import { OBJECTIONS_MAX_TEXT, type ObjectionCaseGrade } from '../../server/domain/objections-expert';
+import type { ObjectionCaseGrade } from '../../server/domain/objections-expert';
 import type { AdvisorObjectionsResult } from '../../server/domain/advisor-results';
 import type { objectionsState } from '../../server/services/objections.service';
 import { showExcelSavingDialog } from '../office/excel-saving-dialog';
@@ -86,9 +86,9 @@ export async function mountObjections(container: HTMLElement, backHref: string):
       </div>`;
   }
   function introExamHtml(): string {
-    return `<section class="obx-exam-start"><span class="obx-big-icon">✎</span><p class="obx-eyebrow">AHORA ES TU TURNO</p><h2 id="obx-title" tabindex="-1">Responde con tus propias palabras</h2><p>Encontrarás los cinco casos, uno a la vez. En cada cuadro escribe cómo responderías al cliente y qué gestión dejarías registrada.</p>
+    return `<section class="obx-exam-start"><span class="obx-big-icon">✎</span><p class="obx-eyebrow">AHORA ES TU TURNO</p><h2 id="obx-title" tabindex="-1">Elige la respuesta más óptima</h2><p>Encontrarás los cinco casos, uno a la vez. En cada uno verás cuatro posibles respuestas: elige la que mejor atiende al cliente y deja la gestión bien registrada.</p>
       <div class="obx-rubric"><div><b>5 casos</b><span>20 puntos cada uno</span></div><div><b>${state.exam.minimumScore}/100</b><span>Para aprobar</span></div><div><b>1 reintento</b><span>Lo activas tú si no apruebas</span></div></div>
-      <p>Propón una acción relacionada con cada caso y obtendrás sus 20 puntos. Una respuesta breve es suficiente: no necesitas un guion ni completar una lista de requisitos.</p><p class="obx-muted">Las sugerencias te ayudan a mejorar y no restan puntos. Puedes escribir o pegar tu respuesta y revisarla antes de enviarla. La revisión automática reconoce expresiones habituales; el administrador puede consultar el texto original.</p>
+      <p>La respuesta más completa vale 20 puntos; una aceptable pero incompleta, 10; una inadecuada, 0. Puedes cambiar tus elecciones y revisarlas antes de enviar.</p><p class="obx-muted">Al final verás qué casos reforzar y por qué. El administrador consulta tus elecciones para acompañarte.</p>
       <button class="obx-primary" data-command data-start ${state.exam.canStart ? '' : 'disabled'}>Comenzar mis cinco casos →</button>
       ${state.exam.waitUntil ? `<p>Podrás iniciar a partir de ${escapar(new Date(state.exam.waitUntil).toLocaleString('es-CO'))}.</p>` : ''}
       ${reactivationNotice({ activityId: state.exam.activityId, status: state.exam.status, requestedAt: state.exam.reactivationRequestedAt })}</section>`;
@@ -98,11 +98,13 @@ export async function mountObjections(container: HTMLElement, backHref: string):
     const value = practice ? practiceText : answers[entry.key] ?? '';
     return `<section class="obx-writing"><header class="obx-writing-heading"><div><p class="obx-eyebrow">${practice ? 'PRÁCTICA LIBRE · SIN CAMBIAR TU NOTA' : `EVALUACIÓN · CASO ${index + 1} DE 5`}</p><h2 id="obx-title" tabindex="-1">${escapar(entry.title)}</h2></div><span class="obx-points">20 puntos</span></header>
       <blockquote class="obx-client">«${escapar(entry.client)}»</blockquote><p class="obx-context">${escapar(entry.situation)}</p>
-      <textarea id="obx-answer" rows="7" maxlength="${OBJECTIONS_MAX_TEXT}" aria-label="Tu respuesta para ${escapar(entry.title)}" placeholder="Escribe aquí tu gestión con tus propias palabras…">${escapar(value)}</textarea>
-      ${practice ? `<button class="obx-primary" data-command data-practice-review>Revisar mi respuesta ✦</button>${practiceResult ? feedback(practiceResult) : ''}` : `<div class="obx-navigation">${index < 4 ? '<button class="obx-primary" data-command data-answer-next>Continuar →</button>' : '<button class="obx-primary" data-command data-review-all>Revisar mis cinco respuestas →</button>'}</div>`}</section>`;
+      <fieldset class="obx-options"><legend>Elige la respuesta más óptima para este caso</legend>
+        ${(entry.options ?? []).map((option, position) => `<label class="obx-option${value === option.id ? ' is-selected' : ''}"><input type="radio" name="obx-option" value="${escapar(option.id)}" ${value === option.id ? 'checked' : ''}><span class="obx-option-letter" aria-hidden="true">${'ABCD'[position]}</span><span>${escapar(option.text)}</span></label>`).join('')}
+      </fieldset>
+      ${practice ? `<button class="obx-primary" data-command data-practice-review ${value ? '' : 'disabled'}>Ver si es la más óptima ✦</button>${practiceResult ? feedback(practiceResult) : ''}` : `<div class="obx-navigation">${index < 4 ? '<button class="obx-primary" data-command data-answer-next>Continuar →</button>' : '<button class="obx-primary" data-command data-review-all>Revisar mis cinco respuestas →</button>'}</div>`}</section>`;
   }
   function reviewHtml(): string {
-    return `<section class="obx-review"><p class="obx-eyebrow">ANTES DE ENVIAR</p><h2 id="obx-title" tabindex="-1">Revisa tus cinco gestiones</h2><p>Al enviar se califica y cierra este intento. Después podrás consultar tu nota.</p>${state.cases.map((c, i) => `<article><div><h3>${i + 1}. ${escapar(c.title)}</h3><button data-command data-edit="${i}">Editar</button></div><p>${escapar(answers[c.key] ?? 'Sin respuesta')}</p></article>`).join('')}<button class="obx-primary" data-command data-submit>Enviar mis respuestas y evaluar ✓</button></section>`;
+    return `<section class="obx-review"><p class="obx-eyebrow">ANTES DE ENVIAR</p><h2 id="obx-title" tabindex="-1">Revisa tus cinco respuestas</h2><p>Al enviar se califica y cierra este intento. Después podrás consultar tu nota.</p>${state.cases.map((c, i) => `<article><div><h3>${i + 1}. ${escapar(c.title)}</h3><button data-command data-edit="${i}">Editar</button></div><p>${escapar(c.options?.find(o => o.id === answers[c.key])?.text ?? 'Sin respuesta')}</p></article>`).join('')}<button class="obx-primary" data-command data-submit>Enviar mis respuestas y evaluar ✓</button></section>`;
   }
   function resultHtml(result: AdvisorObjectionsResult): string {
     const failedCases = result.cases?.filter(c => c.checks.some(check => !check.ok) || c.critical.length > 0) ?? [];
@@ -111,7 +113,7 @@ export async function mountObjections(container: HTMLElement, backHref: string):
       <p class="obx-muted">Revisa los criterios que no se cumplieron. Tu respuesta escrita permanece cerrada, pero aquí tienes la orientación para mejorar.</p>
       <div class="obx-case-results">${failedCases.map(c => `<article class="obx-failure-case"><header><h4>${escapar(c.title)}</h4><strong>${c.score} / ${c.maximum}</strong></header>
         ${c.critical.length ? `<div class="obx-risk" role="alert"><strong>Acción de riesgo detectada</strong><ul>${c.critical.map(item => `<li>${escapar(item)}</li>`).join('')}</ul></div>` : ''}
-        <ul class="obx-checks">${c.checks.filter(check => !check.ok).map(check => `<li class="is-missing"><span aria-hidden="true">!</span><div><strong>${escapar(check.label)}</strong><p>${escapar(check.feedback)}</p></div><b>${check.points}/4</b></li>`).join('')}</ul>
+        <ul class="obx-checks">${c.checks.filter(check => !check.ok).map(check => `<li class="is-missing"><span aria-hidden="true">!</span><div><strong>${escapar(check.label)}</strong><p>${escapar(check.feedback)}</p></div><b>${check.id === 'respuesta' ? `${check.points}/${c.maximum}` : `${check.points}/4`}</b></li>`).join('')}</ul>
         ${c.recommendations.length ? `<div class="obx-guidance"><strong>Orientación</strong><ul>${c.recommendations.map(item => `<li>${escapar(item)}</li>`).join('')}</ul></div>` : ''}
       </article>`).join('')}</div>
     </section>` : '';
@@ -152,18 +154,22 @@ export async function mountObjections(container: HTMLElement, backHref: string):
         index = Math.max(0, state.cases.findIndex(c => !(answers[c.key]?.trim().length > 0))); mode = 'exam';
       } finally { dialog.close(); }
     }); });
-    const editor = container.querySelector<HTMLTextAreaElement>('#obx-answer');
-    editor?.addEventListener('input', () => {
-      if (mode === 'practice' || state.complete) { practiceText = editor.value; practiceResult = null; container.querySelector('.obx-feedback')?.remove(); return; }
-      answers[state.cases[index]!.key] = editor.value;
-    });
+    container.querySelectorAll<HTMLInputElement>('input[name="obx-option"]').forEach(input => input.addEventListener('change', () => {
+      container.querySelectorAll('.obx-option').forEach(label => label.classList.toggle('is-selected', label.contains(input) && input.checked));
+      if (mode === 'practice' || state.complete) {
+        practiceText = input.value; practiceResult = null; container.querySelector('.obx-feedback')?.remove();
+        container.querySelector<HTMLButtonElement>('[data-practice-review]')?.removeAttribute('disabled');
+        return;
+      }
+      answers[state.cases[index]!.key] = input.value;
+    }));
     for (const selector of ['[data-answer-next]', '[data-review-all]']) container.querySelector(selector)?.addEventListener('click', () => { void action(async () => {
       if (selector.includes('next')) index++; if (selector.includes('review-all')) confirming = true;
     }); });
     container.querySelectorAll<HTMLButtonElement>('[data-edit]').forEach(b => b.addEventListener('click', () => { index = Number(b.dataset.edit); confirming = false; render(); focus(); }));
     container.querySelector('[data-submit]')?.addEventListener('click', () => { void action(async () => {
       const missing = state.cases.find(c => !(answers[c.key] ?? '').trim());
-      if (missing) throw new Error(`Completa «${missing.title}» con una respuesta antes de enviar.`);
+      if (missing) throw new Error(`Elige una respuesta para «${missing.title}» antes de enviar.`);
       let celebrate = false;
       await saveTransition('tus resultados', async () => {
         const { data } = await api<{ data: { state: State; alreadySubmitted: boolean } }>(`${BASE}/exam/submit`, { method: 'POST', body: JSON.stringify({ attemptId: state.exam.draft!.attemptId, answers }) });

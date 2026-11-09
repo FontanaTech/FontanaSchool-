@@ -1,9 +1,12 @@
+import { optionFor } from './objections-options.js';
 // Reglas de formación versionadas. Se evalúa el contenido de la gestión escrita con expresiones equivalentes;
 // no se exige copiar un guion. El resultado explica cada regla y conserva la evidencia para revisión humana.
 export const OBJECTIONS_EXPERT_VERSION = 1;
 // El formato de borradores y la configuración permanecen compatibles. La política
 // de calificación se guarda aparte para conservar intactos los resultados anteriores.
 export const OBJECTIONS_GRADING_VERSION = 2;
+// Versión 3: el asesor elige la opción más óptima entre cuatro (ver objections-options.ts).
+export const OBJECTIONS_OPTIONS_VERSION = 3;
 export const OBJECTIONS_EXAM_TITLE = 'Objeciones: evaluación escrita de cinco casos';
 export const OBJECTIONS_MIN_SCORE = 80;
 export const OBJECTIONS_MAX_TEXT = 1500;
@@ -123,9 +126,20 @@ export function objectionRisks(answer: string): string[] {
   return [...new Set(found)];
 }
 
+// Calificación de una opción elegida: 20 la más completa, 10 la aceptable pero incompleta, 0 la inadecuada.
+function gradeOption(key: ObjectionCaseKey, title: string, explain: string, id: string): ObjectionCaseGrade {
+  const option = optionFor(key, id)!;
+  const best = option.score === 20;
+  return { key, title, answer: option.text, maximum: 20, score: option.score,
+    checks: [{ id: 'respuesta', label: best ? 'Elegiste la respuesta más completa' : option.score === 10 ? 'Tu respuesta es aceptable, pero incompleta' : 'Había una respuesta mejor', ok: best, points: option.score, evidence: null, feedback: option.why }],
+    critical: option.risk ? [option.risk] : [],
+    recommendations: best ? [] : [`La respuesta más óptima ${explain.charAt(0).toLowerCase()}${explain.slice(1)}`] };
+}
+
 export function gradeObjectionCase(key: ObjectionCaseKey, answer: string): ObjectionCaseGrade {
   const entry = OBJECTIONS_CASES.find(c => c.key === key);
   if (!entry) throw new Error('Caso no reconocido.');
+  if (typeof answer === 'string' && optionFor(key, answer.trim())) return gradeOption(key, entry.title, entry.explain, answer.trim());
   if (typeof answer !== 'string' || !answer.trim() || answer.length > OBJECTIONS_MAX_TEXT) throw new Error(`Escribe una respuesta para este caso, de hasta ${OBJECTIONS_MAX_TEXT} caracteres.`);
   const text = normalizeObjection(answer);
   const related = CASE_TOPICS[key].test(text);
@@ -159,6 +173,7 @@ export function gradeObjections(answers: Record<string, string>, minimumScore = 
   const cases = OBJECTIONS_CASE_KEYS.map(key => gradeObjectionCase(key, answers[key]!));
   const score = cases.reduce((sum, c) => sum + c.score, 0);
   const criticalCount = cases.reduce((sum, c) => sum + c.critical.length, 0);
-  return { version: OBJECTIONS_GRADING_VERSION, score, minimumScore, passed: score >= minimumScore,
+  const byOptions = OBJECTIONS_CASE_KEYS.every(key => Boolean(optionFor(key, answers[key]!.trim())));
+  return { version: byOptions ? OBJECTIONS_OPTIONS_VERSION : OBJECTIONS_GRADING_VERSION, score, minimumScore, passed: score >= minimumScore,
     cases, criticalCount, recommendations: cases.flatMap(c => c.recommendations.map(r => `${c.title}: ${r}`)) };
 }

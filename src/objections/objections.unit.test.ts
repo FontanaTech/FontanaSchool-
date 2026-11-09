@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { gradeObjections, OBJECTIONS_CASES } from '../../server/domain/objections-expert';
+import { OBJECTION_OPTIONS, publicOptions } from '../../server/domain/objections-options';
 const mocks = vi.hoisted(() => ({ api: vi.fn(), saving: vi.fn(), confirm: vi.fn(), close: vi.fn() }));
 vi.mock('../http', async original => ({ ...await original<any>(), api: mocks.api }));
 vi.mock('../seal-animation', async original => ({ ...await original<any>(), playSeal: vi.fn() }));
@@ -21,26 +22,28 @@ class ElementStub {
 class ContainerStub extends ElementStub {
   html = '';
   elements = new Map<string, ElementStub>();
+  options: ElementStub[] = [];
   set innerHTML(value: string) {
     this.html = value; this.elements.clear();
-    for (const [selector, marker] of [['#obx-title', 'id="obx-title"'], ['#obx-answer', 'id="obx-answer"'], ['[data-save-error]', 'data-save-error'], ['[data-intro-next]', 'data-intro-next'], ['[data-intro-prev]', 'data-intro-prev'], ['[data-answer-next]', 'data-answer-next'], ['[data-start]', 'data-start']]) {
+    for (const [selector, marker] of [['#obx-title', 'id="obx-title"'], ['#obx-answer', 'name="obx-option"'], ['[data-save-error]', 'data-save-error'], ['[data-intro-next]', 'data-intro-next'], ['[data-intro-prev]', 'data-intro-prev'], ['[data-answer-next]', 'data-answer-next'], ['[data-start]', 'data-start']]) {
       if (value.includes(marker!)) this.elements.set(selector!, new ElementStub());
     }
-    const editor = this.elements.get('#obx-answer');
-    if (editor) editor.value = /<textarea[^>]*>([\s\S]*?)<\/textarea>/.exec(value)?.[1] ?? '';
+    this.options = [...value.matchAll(/<input type="radio" name="obx-option" value="(\w)"/g)].map(match => { const option = new ElementStub(); option.value = match[1]!; return option; });
   }
   get innerHTML() { return this.html; }
   querySelector(selector: string) { return this.elements.get(selector) ?? null; }
-  querySelectorAll() { return []; }
+  querySelectorAll(selector: string) { return selector === 'input[name="obx-option"]' ? this.options : []; }
 }
 function fixture(draft: boolean) {
   return { name: 'Enfréntate a la objeción', complete: false, reviewMode: false, legacyCompleted: false,
     percent: draft ? 50 : 0, completedCount: 0, currentBlock: OBJECTIONS_CASES[0].key,
-    cases: OBJECTIONS_CASES, blocks: OBJECTIONS_CASES.map(c => ({ key: c.key, completed: false, enabled: true })),
+    cases: OBJECTIONS_CASES.map(c => ({ ...c, options: publicOptions(c.key) })), blocks: OBJECTIONS_CASES.map(c => ({ key: c.key, completed: false, enabled: true })),
     nextRoute: null, nextName: 'Tipifica', exam: { activityId: 'activity', minimumScore: 80, maxAttempts: 1,
       enabled: true, canStart: !draft, status: draft ? 'EN_PROGRESO' : 'PENDIENTE', reactivationRequestedAt: null, result: null,
-      draft: draft ? { attemptId: 'attempt', number: 1, answers: { 'sin-dinero': 'Respuesta guardada de una sesión anterior del asesor.' } } : null } };
+      draft: draft ? { attemptId: 'attempt', number: 1, answers: { 'sin-dinero': 'c' } } : null } };
 }
+const choose = (root: ContainerStub, id: string) => root.options.find(option => option.value === id)!.listeners.get('change')!();
+
 describe('montaje y borrador de la evaluación de objeciones', () => {
   let root: ContainerStub;
   beforeEach(() => {
@@ -65,7 +68,9 @@ describe('montaje y borrador de la evaluación de objeciones', () => {
     mocks.api.mockResolvedValue({ data: fixture(true) });
     await mountObjections(root as unknown as HTMLElement, '#ruta');
     expect(root.innerHTML).not.toContain('No pudimos abrir el módulo');
-    expect(root.querySelector('#obx-answer')!.value).toBe('Respuesta guardada de una sesión anterior del asesor.');
+    expect(root.options).toHaveLength(4);
+    expect(root.innerHTML).toContain('value="c" checked');
+    expect(root.innerHTML).toContain('Elige la respuesta más óptima para este caso');
     expect(root.innerHTML).not.toContain('Borrador guardado');
     expect(root.innerHTML).not.toContain('data-text-count');
     expect(root.innerHTML).not.toContain('data-answer-prev');
@@ -80,23 +85,20 @@ describe('montaje y borrador de la evaluación de objeciones', () => {
     root.querySelector('[data-intro-prev]')!.listeners.get('click')!();
     expect(root.innerHTML).toContain('Caso 1 de 5');
     for (let i = 0; i < 5; i++) root.querySelector('[data-intro-next]')!.listeners.get('click')!();
-    expect(root.innerHTML).toContain('Responde con tus propias palabras');
+    expect(root.innerHTML).toContain('Elige la respuesta más óptima');
     expect(root.innerHTML).not.toContain('casos revisados');
     expect(mocks.api).toHaveBeenCalledTimes(1);
     expect(mocks.api).toHaveBeenCalledWith('/training/objections/module');
   });
-  it('conserva el texto escrito en memoria sin llamar al servidor hasta el envío', async () => {
+  it('conserva la opción elegida en memoria sin llamar al servidor hasta el envío', async () => {
     mocks.api.mockResolvedValue({ data: fixture(true) });
     await mountObjections(root as unknown as HTMLElement, '#ruta');
-    const editor = root.querySelector('#obx-answer')!;
-    editor.value = 'Nueva gestión redactada libremente por el asesor para este cliente.';
-    editor.listeners.get('input')!();
+    choose(root, 'a');
     await vi.advanceTimersByTimeAsync(1200);
     // Las respuestas viven solo en pantalla: escribir no dispara ningún guardado en el servidor.
     expect(mocks.api).toHaveBeenCalledTimes(1);
     expect(mocks.api).toHaveBeenCalledWith('/training/objections/module');
     expect(root.querySelector('[data-save-error]')).toBeNull();
-    expect(root.querySelector('#obx-answer')!.value).toBe(editor.value);
   });
   it('muestra la carga al comenzar, evita doble inicio y abre el editor solo tras la respuesta del servidor', async () => {
     let acknowledge!: (value: unknown) => void;
@@ -127,24 +129,19 @@ describe('montaje y borrador de la evaluación de objeciones', () => {
     expect(root.querySelector('[data-start]')).not.toBeNull();
     expect(root.querySelector('#obx-answer')).toBeNull();
   });
-  it('al escribir no guarda en el servidor ni muestra error aunque la red esté caída', async () => {
+  it('al elegir una opción no guarda en el servidor ni muestra error aunque la red esté caída', async () => {
     mocks.api.mockResolvedValueOnce({ data: fixture(true) }).mockRejectedValue(new Error('Sin conexión'));
     await mountObjections(root as unknown as HTMLElement, '#ruta');
-    const editor = root.querySelector('#obx-answer')!;
-    editor.value = 'Gestión escrita que no debe desaparecer al perder la conexión.';
-    editor.listeners.get('input')!();
+    choose(root, 'b');
     await vi.advanceTimersByTimeAsync(1200);
     // Como no hay guardado por tecla, una red caída no afecta lo escrito ni genera un error de guardado.
     expect(mocks.api).toHaveBeenCalledTimes(1);
     expect(root.querySelector('[data-save-error]')).toBeNull();
-    expect(editor.value).toBe('Gestión escrita que no debe desaparecer al perder la conexión.');
   });
-  it('al escribir y continuar pasa al siguiente caso sin diálogo de guardado', async () => {
+  it('al elegir y continuar pasa al siguiente caso sin diálogo de guardado', async () => {
     mocks.api.mockResolvedValue({ data: fixture(true) });
     await mountObjections(root as unknown as HTMLElement, '#ruta');
-    const editor = root.querySelector('#obx-answer')!;
-    editor.value = 'Pregunto por una fecha de pago posible.';
-    editor.listeners.get('input')!();
+    choose(root, 'c');
     root.querySelector('[data-answer-next]')!.listeners.get('click')!();
     await vi.advanceTimersByTimeAsync(0);
     expect(mocks.saving).not.toHaveBeenCalled();
@@ -154,9 +151,7 @@ describe('montaje y borrador de la evaluación de objeciones', () => {
   it('continuar no llama al servidor: una red caída no borra la respuesta ni bloquea el avance', async () => {
     mocks.api.mockResolvedValueOnce({ data: fixture(true) }).mockRejectedValue(new Error('No se pudo guardar'));
     await mountObjections(root as unknown as HTMLElement, '#ruta');
-    const editor = root.querySelector('#obx-answer')!;
-    editor.value = 'Podemos revisar una alternativa para el pago.';
-    editor.listeners.get('input')!();
+    choose(root, 'c');
     root.querySelector('[data-answer-next]')!.listeners.get('click')!();
     await vi.advanceTimersByTimeAsync(0);
     expect(mocks.api).toHaveBeenCalledTimes(1);
@@ -165,7 +160,9 @@ describe('montaje y borrador de la evaluación de objeciones', () => {
     expect(root.innerHTML).toContain('EVALUACIÓN · CASO 2 DE 5');
   });
   it('restaura el sello y la nota real de 80 sin repetir la celebración ni exigir cinco casos perfectos', async () => {
-    const answers = { ...Object.fromEntries(OBJECTIONS_CASES.map(c => [c.key, c.example])), 'sin-dinero': 'Texto ajeno a esta situación.' };
+    const best = (key: string) => OBJECTION_OPTIONS[key]!.find(o => o.score === 20)!.id;
+    const worst = (key: string) => OBJECTION_OPTIONS[key]!.find(o => o.score === 0)!.id;
+    const answers = { ...Object.fromEntries(OBJECTIONS_CASES.map(c => [c.key, best(c.key)])), 'sin-dinero': worst('sin-dinero') };
     const state = { ...fixture(false), complete: true, nextRoute: '#tipifica', exam: { ...fixture(false).exam,
       result: gradeObjections(answers) } };
     mocks.api.mockResolvedValue({ data: state });
@@ -181,7 +178,7 @@ describe('montaje y borrador de la evaluación de objeciones', () => {
     expect(playSeal).not.toHaveBeenCalled();
   });
   it('un resultado no aprobado conserva el refuerzo y no muestra el sello de éxito', async () => {
-    const result = gradeObjections(Object.fromEntries(OBJECTIONS_CASES.map(c => [c.key, 'Texto ajeno a esta situación.'])));
+    const result = gradeObjections(Object.fromEntries(OBJECTIONS_CASES.map(c => [c.key, OBJECTION_OPTIONS[c.key]!.find(o => o.score === 0)!.id])));
     mocks.api.mockResolvedValue({ data: { ...fixture(false), exam: { ...fixture(false).exam, result } } });
     await mountObjections(root as unknown as HTMLElement, '#ruta');
     expect(root.innerHTML).toContain('Vamos a reforzar tu gestión');

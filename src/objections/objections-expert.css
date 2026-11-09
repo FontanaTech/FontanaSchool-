@@ -166,3 +166,14 @@ body:has(.obx-course) .auth-main { max-width: 1420px; padding: 32px 28px 80px; }
   .obx-steps { grid-template-columns: minmax(0, 1fr); gap: 10px; }
   .obx-steps li { flex-direction: row; padding: 0; text-align: left; }
 }
+
+/* Opciones de respuesta (elige la más óptima) */
+.obx-options { margin: 0 0 18px; padding: 0; border: 0; display: grid; gap: 12px; min-width: 0; }
+.obx-options legend { margin-bottom: 10px; font-weight: 700; color: #3a2230; }
+.obx-option { display: flex; gap: 14px; align-items: flex-start; padding: 16px 18px; border: 2px solid #e3d6bd; border-radius: 14px; background: #fffdf7; cursor: pointer; line-height: 1.5; transition: border-color .15s, background .15s, box-shadow .15s; }
+.obx-option:hover { border-color: #c9a64a; }
+.obx-option:focus-within { outline: 3px solid #8b153855; outline-offset: 2px; }
+.obx-option.is-selected { border-color: #8b1538; background: #fbeff0; box-shadow: 0 4px 16px #8b153822; }
+.obx-option input { position: absolute; opacity: 0; pointer-events: none; }
+.obx-option-letter { flex: none; display: grid; place-items: center; width: 32px; height: 32px; border-radius: 50%; background: #efe3c7; color: #5a3b1a; font-weight: 800; }
+.obx-option.is-selected .obx-option-letter { background: #8b1538; color: #fff; }
