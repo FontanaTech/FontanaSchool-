@@ -50,11 +50,12 @@ export async function logoutEverywhere(userId: string): Promise<void> {
 // introducción o va directo al examen. Responderla implica haber terminado la inducción inicial.
 export async function registrarExperiencia(usuario: AuthUser, input: ExperienciaBody): Promise<AuthUser> {
   if (usuario.debeCompletarDatos) throw new ForbiddenError('Completa tu perfil de asesor antes de continuar.', 'PROFILE_INCOMPLETE');
+  // La respuesta se da una sola vez: cambiarla después del examen diagnóstico alteraría el camino ya recorrido.
+  const answered = usuario.tieneExperienciaCobranzasDigitales !== null && usuario.tieneExperienciaCobranzasDigitales !== undefined;
   return prisma.usuario.update({
     where: { id: usuario.id },
     data: {
-      tieneExperienciaCobranzasDigitales: input.tieneExperienciaCobranzasDigitales,
-      fechaRespuestaExperiencia: new Date(),
+      ...(answered ? {} : { tieneExperienciaCobranzasDigitales: input.tieneExperienciaCobranzasDigitales, fechaRespuestaExperiencia: new Date() }),
       fechaInduccionCompletada: usuario.fechaInduccionCompletada ?? new Date(),
       // Responder la experiencia implica haber terminado la historia y el método.
       fechaHistoriaCompletada: usuario.fechaHistoriaCompletada ?? new Date(),

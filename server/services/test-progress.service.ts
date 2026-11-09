@@ -94,7 +94,11 @@ export async function setWelcomeCompletion(userId: string, completed: boolean, c
     if (!user || user.rol !== Role.ADVISOR) throw new NotFoundError('Asesor no encontrado.', 'ADVISOR_NOT_FOUND');
     if (user.numeroDocumento !== COURSE_RESET_DOCUMENT) throw new ForbiddenError('Esta herramienta de pruebas no está habilitada para este usuario.', 'TEST_PROGRESS_NOT_ALLOWED');
     const date = completed ? now : null;
-    await tx.usuario.update({ where: { id: userId }, data: { fechaHistoriaCompletada: date, fechaMetodoCompletado: date, fechaInduccionCompletada: date } });
+    await tx.usuario.update({ where: { id: userId }, data: {
+      fechaHistoriaCompletada: date, fechaMetodoCompletado: date, fechaInduccionCompletada: date,
+      // Al volver a probar la bienvenida también se vuelve a preguntar la experiencia (se responde al final del álbum).
+      ...(completed ? {} : { tieneExperienciaCobranzasDigitales: null, fechaRespuestaExperiencia: null }),
+    } });
     await audit(tx, context, {
       action: completed ? 'TEST_WELCOME_COMPLETED' : 'TEST_WELCOME_CLEARED', entityType: 'Usuario', entityId: userId,
       reason: completed ? 'Panel de pruebas: bienvenida marcada como completada' : 'Panel de pruebas: bienvenida pendiente para volver a probarla',

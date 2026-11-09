@@ -214,11 +214,18 @@ const albumContinue = element('#album-continue');
 const albumContinueButton = element<HTMLButtonElement>('#album-continue-button');
 const albumContinueNote = element('#album-continue-note');
 let finishing = false;
-// Termina la inducción inicial y abre la ruta de formación; la experiencia se pregunta en el módulo 02.
+// Termina la inducción inicial y abre la ruta de formación. La experiencia se responde aquí, al final del álbum;
+// en el módulo 02 solo se le recuerda al asesor el camino que le corresponde.
 async function finishInduction(): Promise<void> {
   if (finishing) return;
   if (!principlesReviewed || !companyRead.checked) {
     albumContinueNote.textContent = 'Antes de continuar, termina la historia, las reglas, la seguridad y los principios de trabajo, y confirma tu lectura.';
+    albumContinueNote.hidden = false;
+    return;
+  }
+  const experience = document.querySelector<HTMLInputElement>('input[name="album-experience"]:checked')?.value;
+  if (!experience) {
+    albumContinueNote.textContent = 'Antes de continuar, elige si tienes experiencia en cobranzas digitales o si eres nuevo.';
     albumContinueNote.hidden = false;
     return;
   }
@@ -229,7 +236,10 @@ async function finishInduction(): Promise<void> {
   companyRead.disabled = true;
   albumContinueNote.hidden = true;
   try {
-    const result = await fetch('/api/auth/induccion/completar', { method: 'POST', credentials: 'same-origin' });
+    const result = await fetch('/api/auth/experiencia', {
+      method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ tieneExperienciaCobranzasDigitales: experience === 'experienced' }),
+    });
     if (result.status === 401) { location.assign('/login'); return; }
     if (result.status === 404) throw new Error('El servidor necesita actualizarse. Reinicia el servidor de Fontana e intenta nuevamente.');
     if (!result.ok) {

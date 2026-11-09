@@ -1224,3 +1224,9 @@ header { position: relative; }
 /* La confirmación de lectura queda dentro del resumen de principios. */
 .principle-confirmation { margin-top: 14px; }
 .principle-confirmation .reading-confirmation { margin: 0; }
+
+/* Pregunta de experiencia al final del álbum (antes de la ruta de formación) */
+.album-continue .experience-option small { display: block; margin-top: 4px; font-size: 13px; font-weight: 400; color: #4a5a6a; }
+.album-continue .experience-option span { display: block; color: var(--navy); }
+.album-continue fieldset { margin-bottom: 20px; }
+@media (max-width: 720px) { .album-continue .experience-options { grid-template-columns: 1fr; } }

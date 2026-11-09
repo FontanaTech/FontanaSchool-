@@ -14,6 +14,7 @@ import {
 import { idParams } from '../validators/common.js';
 import { validParams, validQuery } from '../middleware/validate.js';
 import { advisorCollectionsHistory, advisorCollectionsAttempt } from '../services/collections-admin.service.js';
+import { getPerformanceReport } from '../services/performance-report.service.js';
 import {
   changeStatusBody, createUserBody, legacyCreateBody, legacyListQuery, legacyUpdateBody, listUsersQuery, resetPasswordBody, setPasswordBody, updateUserBody,
 } from '../validators/user.validator.js';
@@ -41,6 +42,10 @@ adminRouter.put(
   validate({ params: z.object({ userId: z.uuid() }).strict(), body: z.object({ completed: z.boolean() }).strict() }),
   users.setTestWelcomeCompletion,
 );
+// Informe de desempeño: examen final, Tipifica, módulos y oportunidades de mejora.
+adminRouter.get('/advisors/:id/performance-report', validate({ params: idParams }), async (request, response) => {
+  response.json({ data: await getPerformanceReport(validParams<{ id: string }>(request).id) });
+});
 adminRouter.get('/advisors/:id/collections-exams', validate({ params: idParams, query: z.object({ cursor: z.uuid().optional() }).strict() }), async (request, response) => {
   response.json({ data: await advisorCollectionsHistory(validParams<{ id: string }>(request).id, validQuery<{ cursor?: string }>(request).cursor) });
 });

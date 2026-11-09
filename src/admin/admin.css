@@ -285,3 +285,21 @@
 #admin-dialog .auth-form .check-label { font-size: 15px; font-weight: 500; }
 #admin-dialog .dialog-error { font-weight: 600; }
 #admin-busy p { color: #1f2a37; font-size: 16px; font-weight: 600; line-height: 1.6; }
+
+/* Informe de desempeño y oportunidades de mejora */
+.perf-block { margin-top: 22px; }
+.perf-block h3 { margin: 0 0 10px; font-size: 1.05rem; }
+.perf-ok { color: #1f6b3a; }
+.perf-bad { color: #a12b2b; }
+.perf-weak td { background: #fff5f3; }
+.perf-opps { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+.perf-opp { display: grid; gap: 4px; padding: 12px 16px; border: 1px solid #d9e0e8; border-left: 5px solid #8a96a3; border-radius: 10px; background: #fff; }
+.perf-opp--alta { border-left-color: #c0392b; background: #fff6f4; }
+.perf-opp--media { border-left-color: #d98e04; background: #fffaf0; }
+.perf-opp p { margin: 0; }
+.perf-reco { color: #1b2a3a; }
+.perf-sev { font-size: .75rem; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: #5b6b7b; }
+.perf-details { margin-top: 10px; }
+.perf-list, .perf-checks { list-style: none; margin: 10px 0 0; padding: 0; display: grid; gap: 10px; }
+.perf-list li { display: grid; gap: 2px; padding-bottom: 8px; border-bottom: 1px solid #e6ebf0; }
+.perf-checks li small { display: block; color: #5b6b7b; margin-left: 22px; }

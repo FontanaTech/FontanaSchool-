@@ -2,6 +2,7 @@ import './admin.css';
 import { api, escapar, formatDate } from '../http';
 import { officeFileHtml, officeSection } from './office-admin';
 import { mountCollectionsHistory } from './collections-admin';
+import { mountPerformanceReport } from './performance-report-admin';
 import { certificationSection } from './certification-admin';
 
 // Panel administrativo. Navegación por hash dentro de /admin:
@@ -378,6 +379,7 @@ async function advisorFileSection(view: HTMLElement, userId: string): Promise<vo
       <p>Módulos en orden. Reactiva la prueba cuando se quede sin intentos o ajusta cuántos intentos tiene en cada actividad.</p>
       ${testAccount ? '<p class="dialog-note"><strong>Cuenta de pruebas:</strong> con el interruptor de cada módulo lo das por <strong>completado</strong> (aprueba sus actividades, emite el sello y desbloquea el siguiente; igual puede abrirlas y hacerlas) o lo dejas <strong>vacío</strong> para probarlo de cero.</p>' : ''}</div></div>
       <div class="module-list">${welcomeCard}${moduleCards}</div></section>
+    <div id="advisor-performance-report"></div>
     <div id="advisor-collections-history"></div>
     ${history('Historial de intentos y notas', `<div class="table-wrap"><table><thead><tr><th>#</th><th>Actividad</th><th>Versión</th><th>Estado</th><th>Nota</th><th>Inicio</th><th>Envío</th><th>Duración</th></tr></thead><tbody>
       ${data.attempts.map((a) => `<tr><td>${a.number}</td><td>${escapar(a.evaluation.activity.title)}</td><td>v${a.evaluation.version}</td><td>${badge(a.status)}</td><td>${escapar(a.score ?? '—')}</td><td>${formatDate(a.startedAt)}</td><td>${formatDate(a.submittedAt)}</td><td>${a.durationSeconds !== null ? `${Math.round(a.durationSeconds / 60)} min` : '—'}</td></tr>`).join('') || empty(8)}
@@ -397,6 +399,8 @@ async function advisorFileSection(view: HTMLElement, userId: string): Promise<vo
       </tbody></table></div>`)}
     ${history('Últimas acciones de auditoría', `<ul class="audit-list">${data.audit.map((a) => `<li><strong>${escapar(a.action)}</strong> · ${escapar(a.actor.nombreCompleto)} · ${formatDate(a.createdAt)}${a.reason ? ` — ${escapar(a.reason)}` : ''}</li>`).join('') || '<li>Sin acciones registradas.</li>'}</ul>`)}`;
 
+  const performanceRoot = view.querySelector<HTMLElement>('#advisor-performance-report');
+  if (performanceRoot) void mountPerformanceReport(performanceRoot, userId);
   const collectionsRoot = view.querySelector<HTMLElement>('#advisor-collections-history');
   if (collectionsRoot) void mountCollectionsHistory(collectionsRoot, userId);
   const reload = rerender;

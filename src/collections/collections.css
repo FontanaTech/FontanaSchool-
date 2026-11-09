@@ -636,3 +636,5 @@ body:has(.collections-course) .auth-header {
     radial-gradient(ellipse at 90% 100%, #d4af3728, transparent 55%),
     linear-gradient(115deg, #70112c, #8b1538 60%, #9c2748);
 }
+
+.collections-path-note { margin: 0 0 16px; padding: 14px 18px; border-radius: 12px; border: 1px solid #d4af3766; background: #fff8e6; color: #3a2f12; font-size: 15px; }

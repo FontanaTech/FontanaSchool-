@@ -16,7 +16,7 @@ export type OptionLetter = (typeof OPTION_LETTERS)[number];
 const WEAK_TOPIC_PERCENT = 70;
 
 // Dónde se repasa cada tema (para las recomendaciones del resultado).
-const TOPIC_MODULE: Record<FinalExamTopic, string> = {
+export const TOPIC_MODULE: Record<FinalExamTopic, string> = {
   conceptos: 'Inducción a las cobranzas',
   etapas: 'Inducción a las cobranzas',
   tipos: 'Inducción a las cobranzas',
