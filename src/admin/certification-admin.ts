@@ -1,4 +1,5 @@
 import './certification-admin.css';
+import { mountDossierRecommendation } from './performance-report-admin';
 import { api, escapar, formatDate } from '../http';
 import { retryScoreLabel } from '../retry-waiting';
 
@@ -62,7 +63,10 @@ export async function certificationSection(view: HTMLElement, hash: string, help
 async function certificationsSection(view: HTMLElement, helpers: Helpers, status: CertStatus | '' = 'PENDIENTE_VALIDACION'): Promise<void> {
   const query = new URLSearchParams(status ? { status } : {});
   const { data } = await api<{ data: { items: CertRow[]; nextCursor: string | null; counts: Record<CertStatus, number> } }>(`/admin/certifications?${query}`);
-  const pending = (await api<{ data: { pendingTotal: number } }>('/admin/reactivation-requests?status=PENDING')).data.pendingTotal;
+  const [pending, certified] = await Promise.all([
+    api<{ data: { pendingTotal: number } }>('/admin/reactivation-requests?status=PENDING').then((response) => response.data.pendingTotal),
+    status === 'CERTIFICADO' ? Promise.resolve([] as CertRow[]) : api<{ data: { items: CertRow[] } }>('/admin/certifications?status=CERTIFICADO').then((response) => response.data.items),
+  ]);
   const filters: { value: CertStatus | ''; label: string }[] = [
     { value: 'PENDIENTE_VALIDACION', label: 'Pendientes de validación' }, { value: 'DEVUELTO', label: 'Devueltas' }, { value: 'CERTIFICADO', label: 'Certificadas' }, { value: '', label: 'Todas' },
   ];
@@ -72,7 +76,12 @@ async function certificationsSection(view: HTMLElement, helpers: Helpers, status
     <div class="cert-summary">${filters.filter((filter) => filter.value).map((filter) => `<button type="button" class="cert-stat${filter.value === status ? ' selected' : ''}" data-filter="${filter.value}"><strong>${data.counts[filter.value as CertStatus] ?? 0}</strong><span>${escapar(filter.label)}</span></button>`).join('')}<button type="button" class="cert-stat${status === '' ? ' selected' : ''}" data-filter=""><strong>${Object.values(data.counts).reduce((sum, value) => sum + value, 0)}</strong><span>Todas</span></button></div>
     <div class="table-wrap"><table><thead><tr><th>Asesor</th><th>Documento</th><th>Perfil</th><th>Estado</th><th>Finalizó</th><th>Certificado</th><th></th></tr></thead><tbody>
       ${data.items.map((row) => `<tr><td>${escapar(row.name)}</td><td>${escapar(row.document)}</td><td>${escapar(PROFILE_TEXT[row.profile] ?? row.profile)}</td><td>${chip(CERT_TONE[row.status], row.statusLabel)}${row.reason ? `<br><small>${escapar(row.reason)}</small>` : ''}</td><td>${row.completedAt ? formatDate(row.completedAt) : '—'}</td><td>${row.certificate ? `<code>${escapar(row.certificate.code)}</code>` : '—'}</td><td><a class="secondary-link" href="#expediente/${row.userId}">Ver expediente</a></td></tr>`).join('') || helpers.empty(7, 'No hay asesores en este estado.')}
-    </tbody></table></div></section>`;
+    </tbody></table></div></section>
+    ${status === 'CERTIFICADO' ? '' : `<section class="auth-card admin-card"><div class="section-title"><div><h2>Asesores certificados</h2><p>${certified.length ? `${certified.length} asesor${certified.length === 1 ? '' : 'es'} con certificado vigente.` : 'Todavía no hay asesores certificados.'} Abre su expediente para ver sus resultados y la recomendación del sistema experto.</p></div></div>
+      <div class="table-wrap"><table><thead><tr><th>Asesor</th><th>Documento</th><th>Perfil</th><th>Certificado</th><th>Emitido</th><th></th></tr></thead><tbody>
+      ${certified.map((row) => `<tr><td>${escapar(row.name)}</td><td>${escapar(row.document)}</td><td>${escapar(PROFILE_TEXT[row.profile] ?? row.profile)}</td><td>${row.certificate ? `<code>${escapar(row.certificate.code)}</code>` : '—'}</td><td>${row.certificate ? formatDate(row.certificate.issuedAt) : '—'}</td>
+        <td><a class="row-action" href="#expediente/${row.userId}">Ver expediente de certificación</a>${row.certificate ? ` <a class="secondary-link" href="/api/admin/certificates/${row.certificate.id}/pdf">PDF</a>` : ''}</td></tr>`).join('') || helpers.empty(6, 'Todavía no hay asesores certificados.')}
+      </tbody></table></div></section>`}`;
   view.querySelectorAll<HTMLButtonElement>('[data-filter]').forEach((button) => button.addEventListener('click', () => {
     void certificationsSection(view, helpers, button.dataset.filter as CertStatus | '').catch((error) => helpers.feedback((error as Error).message, true));
   }));
@@ -124,6 +133,7 @@ async function dossierSection(view: HTMLElement, userId: string, helpers: Helper
         <div><dt>Reactivaciones usadas</dt><dd>${data.reactivationsUsed}</dd></div>
       </dl></section>
     </div>
+    <section class="cert-expert" id="cert-expert"></section>
     <h3>Resultado de cada tipificación</h3>
     <div class="table-wrap"><table><thead><tr><th>Módulo</th><th>Ejercicio</th><th>Estado</th><th>Nota</th><th>Intentos</th><th>Criterios</th></tr></thead><tbody>${data.typification.map(activityRow).join('') || helpers.empty(6)}</tbody></table></div>
     <h3>Resultados por actividad</h3>
@@ -132,6 +142,9 @@ async function dossierSection(view: HTMLElement, userId: string, helpers: Helper
     <div class="table-wrap"><table><thead><tr><th>Fecha</th><th>Decisión</th><th>Motivo</th><th>Administrador</th></tr></thead><tbody>${data.decisions.map((decision) => `<tr><td>${formatDate(decision.createdAt)}</td><td>${decision.decision === 'APPROVED' ? chip('ok', 'Aprobada') : chip('bad', 'Devuelta')}</td><td>${escapar(decision.reason ?? '')}${decision.activityIds.length ? `<br><small>${decision.activityIds.length} actividad(es) señaladas</small>` : ''}</td><td>${escapar(decision.decidedBy)}</td></tr>`).join('') || helpers.empty(4, 'Sin decisiones todavía.')}</tbody></table></div>
     ${data.summaries.length ? `<h3>Resumen consolidado</h3><div class="table-wrap"><table><thead><tr><th>Ciclo</th><th>Certificado</th><th>Fecha</th><th>Tipificación</th><th>Examen general</th><th>Intentos</th><th>Reactivaciones</th></tr></thead><tbody>${data.summaries.map((summary) => `<tr><td>${summary.cycle}</td><td><code>${escapar(summary.certificateCode)}</code></td><td>${formatDate(summary.certifiedAt)}</td><td>${summary.typificationPassed}/${summary.typificationTotal}</td><td>${score(summary.finalExamScore)}</td><td>${summary.totalAttempts}</td><td>${summary.reactivations}</td></tr>`).join('')}</tbody></table></div>` : ''}
   </section>`;
+
+  const expert = view.querySelector<HTMLElement>('#cert-expert');
+  if (expert) void mountDossierRecommendation(expert, data.advisor.id);
 
   view.querySelector('[data-approve]')?.addEventListener('click', async () => {
     const form = await helpers.askForm(`Aprobar la certificación de ${data.advisor.name}`, `

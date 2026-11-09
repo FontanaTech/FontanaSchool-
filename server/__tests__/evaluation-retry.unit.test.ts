@@ -75,8 +75,14 @@ describe('único reintento solicitado por el asesor', () => {
     await expect(activateSelfRetry('advisor', 'activity')).rejects.toThrow('Certificado activo');
     expect(mocks.override).not.toHaveBeenCalled();
   });
-  it('las configuraciones antiguas no dan varios intentos base ni esperas', () => {
-    expect(initialEvaluation({ maxAttempts: 3, waitMinutes: 30, minimumScore: 80 })).toEqual({ maxAttempts: 1, waitMinutes: 0, minimumScore: 80 });
+  it('el cupo base sale de la evaluación vigente (se cambia en Módulos y actividades) y nunca agrega esperas', () => {
+    expect(initialEvaluation({ maxAttempts: 3, waitMinutes: 30, minimumScore: 80 })).toEqual({ maxAttempts: 3, waitMinutes: 0, minimumScore: 80 });
+    expect(initialEvaluation({ maxAttempts: 0, waitMinutes: 0, minimumScore: 80 })).toMatchObject({ maxAttempts: 1 });
+  });
+  it('el cupo individual del asesor manda sobre el de la evaluación', () => {
+    expect(initialEvaluation({ maxAttempts: 1, waitMinutes: 0 }, 4)).toMatchObject({ maxAttempts: 4 });
+    expect(initialEvaluation({ maxAttempts: 3, waitMinutes: 0 }, 1)).toMatchObject({ maxAttempts: 1 });
+    expect(initialEvaluation({ maxAttempts: 2, waitMinutes: 0 }, null)).toMatchObject({ maxAttempts: 2 });
   });
   it('conserva el motivo de rechazo para el aviso de acompañamiento', async () => {
     mocks.tx.userActivityOverride.findUnique.mockResolvedValue({ id: 'grant' });

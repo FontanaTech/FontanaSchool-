@@ -2,7 +2,7 @@ import { Prisma } from '@prisma/client';
 import { prisma, type Db } from '../config/prisma.js';
 import { ConflictError, NotFoundError, ValidationError } from '../domain/errors.js';
 import {
-  archiveActiveEvaluations, createEvaluation, findActivityById, findModuleById, latestEvaluationVersion, listAllModulesForAdmin,
+  activeEvaluations, archiveActiveEvaluations, createEvaluation, findActivityById, findModuleById, latestEvaluationVersion, listAllModulesForAdmin,
   listPrerequisiteEdges, replacePrerequisites, updateActivityStatus, updateModuleStatus,
 } from '../repositories/catalog.repository.js';
 import { audit, type ActionContext } from './audit.service.js';
@@ -51,6 +51,10 @@ export async function createEvaluationVersion(activityId: string, input: Evaluat
     }
     await tx.$queryRaw`SELECT id FROM induccion.actividades WHERE id = ${activityId}::uuid FOR UPDATE`;
     const version = ((await latestEvaluationVersion(tx, activityId))?.version ?? 0) + 1;
+    // Lo que el formulario no envía (número de preguntas del examen general, versión del contenido) se conserva de la
+    // versión vigente: cambiar solo los intentos no debe desconfigurar la evaluación.
+    const current = (await activeEvaluations(tx, [activityId])).get(activityId);
+    input = { ...input, questionCount: input.questionCount ?? current?.questionCount ?? undefined, contentVersion: input.contentVersion ?? current?.contentVersion ?? undefined };
     await archiveActiveEvaluations(tx, activityId);
     const evaluation = await createEvaluation(tx, {
       activityId, version, title: input.title ?? null, status: 'ACTIVE',

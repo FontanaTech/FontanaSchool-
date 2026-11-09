@@ -484,7 +484,8 @@ async function modulesSection(view: HTMLElement): Promise<void> {
         return `<tr><td>${escapar(activity.title)}</td><td>${escapar(activity.type)}</td><td>${activity.isRequired ? 'Sí' : 'No'}</td><td>${badge(activity.status)}</td>
           <td>${evaluation ? `v${evaluation.version}: mínimo ${escapar(evaluation.minimumScore)}, ${evaluation.maxAttempts} intentos, espera ${evaluation.waitMinutes} min (${escapar(text(evaluation.status))})` : graded ? 'Sin configurar' : '<span class="muted">No se califica</span>'}</td>
           <td><button class="row-action" data-activity="${activity.id}" data-next="${activity.status === 'ACTIVE' ? 'INACTIVE' : 'ACTIVE'}">${activity.status === 'ACTIVE' ? 'Desactivar' : 'Activar'}</button>
-          ${graded ? `<button class="row-action" data-evaluation="${activity.id}">Configurar evaluación</button>` : ''}</td></tr>`;
+          ${graded ? `<button class="row-action" data-evaluation="${activity.id}">Configurar evaluación</button>` : ''}
+          ${evaluation ? `<button class="row-action" data-attempts="${activity.id}" data-title="${escapar(activity.title)}" data-max="${evaluation.maxAttempts}" data-min="${escapar(evaluation.minimumScore)}" data-wait="${evaluation.waitMinutes}">Cambiar intentos</button>` : ''}</td></tr>`;
       }).join('') || empty(6, 'El estado de este módulo depende de los sellos.')}
       </tbody></table></div></section>`).join('');
 
@@ -493,6 +494,7 @@ async function modulesSection(view: HTMLElement): Promise<void> {
     const moduleButton = target.closest<HTMLButtonElement>('[data-module]');
     const activityButton = target.closest<HTMLButtonElement>('[data-activity]');
     const evaluationButton = target.closest<HTMLButtonElement>('[data-evaluation]');
+    const attemptsButton = target.closest<HTMLButtonElement>('[data-attempts]');
     const reload = rerender;
     if (moduleButton || activityButton) {
       const button = (moduleButton ?? activityButton)!;
@@ -500,6 +502,15 @@ async function modulesSection(view: HTMLElement): Promise<void> {
       if (!form) return;
       const path = moduleButton ? `/admin/modules/${moduleButton.dataset.module}/status` : `/admin/activities/${activityButton!.dataset.activity}/status`;
       await run(() => api(path, { method: 'PATCH', body: JSON.stringify({ status: button.dataset.next, reason: form.reason }) }), 'Estado actualizado.', reload);
+    } else if (attemptsButton) {
+      // Cambia los intentos de la actividad para todos los asesores: crea una versión nueva de la evaluación que
+      // conserva la nota mínima y la configuración. Los cupos individuales fijados en la ficha del asesor mandan sobre este.
+      const { attempts: activityId, title = '', max = '1', min = '0', wait = '0' } = attemptsButton.dataset;
+      const form = await askForm(`Intentos de «${title}»`, `
+        <p class="dialog-note">Hoy cada asesor tiene <strong>${escapar(max)}</strong> intento(s) en esta actividad. El cambio aplica a todos los asesores desde ahora; los intentos ya usados se conservan y quien tenga un cupo individual en su ficha conserva ese cupo.</p>
+        <label>Intentos por asesor<input name="maxAttempts" type="number" min="1" max="20" required value="${escapar(max)}"></label>`);
+      if (!form) return;
+      await run(() => api(`/admin/activities/${activityId}/evaluations`, { method: 'POST', body: JSON.stringify({ minimumScore: Number(min), maxAttempts: Number(form.maxAttempts), waitMinutes: Number(wait), reason: form.reason }) }), 'Intentos actualizados para todos los asesores.', reload);
     } else if (evaluationButton) {
       const form = await askForm('Nueva versión de evaluación', `
         <label>Nota mínima (0–100)<input name="minimumScore" type="number" min="0" max="100" step="0.01" required value="70"></label>

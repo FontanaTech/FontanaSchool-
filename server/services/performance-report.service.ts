@@ -65,6 +65,25 @@ export async function getPerformanceReport(userId: string, now = new Date()) {
     advisor: { id: user.id, name: user.nombreCompleto, document: user.numeroDocumento },
     generatedAt: now.toISOString(),
     summary: summarize(opportunities),
+    certificationStatus: snapshot.certification.status,
     finalExam, tipifica, modules, opportunities,
+  };
+}
+
+// Lo que ve el propio asesor cuando no logra certificarse: se queda sin intentos en un módulo, no aprueba el
+// examen general o el administrador devuelve su certificación. Solo las oportunidades de mejora (qué reforzar y
+// dónde), sin la evidencia de cada criterio ni las respuestas correctas.
+export async function advisorOpportunities(userId: string, now = new Date()) {
+  const report = await getPerformanceReport(userId, now);
+  const blocked = report.modules.filter((module) => module.status === 'FAILED').map((module) => module.name);
+  const examFailed = Boolean(report.finalExam && !report.finalExam.passed);
+  const returned = report.certificationStatus === 'DEVUELTO';
+  const show = report.certificationStatus !== 'CERTIFICADO' && (blocked.length > 0 || examFailed || returned) && report.opportunities.length > 0;
+  const reason = returned ? 'Tu certificación fue devuelta para que refuerces algunos temas.'
+    : examFailed ? 'No alcanzaste el mínimo del examen general.'
+      : blocked.length ? `Te quedaste sin intentos en: ${blocked.join(', ')}.` : null;
+  return {
+    show, reason, summary: report.summary,
+    opportunities: show ? report.opportunities.map(({ area, severity, finding, recommendation, module }) => ({ area, severity, finding, recommendation, module })) : [],
   };
 }

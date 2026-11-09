@@ -4,6 +4,7 @@ import { certificatePdfFile, celebrated, certification, moduleBySlug, modules, p
 import { Role } from '../domain/enums.js';
 import { requireAuth, requireRole } from '../middleware/auth.js';
 import { validate } from '../middleware/validate.js';
+import { advisorOpportunities } from '../services/performance-report.service.js';
 
 export const advisorRouter = Router();
 advisorRouter.use(requireAuth, requireRole(Role.ADVISOR));
@@ -13,3 +14,7 @@ advisorRouter.get('/progress', progress);
 advisorRouter.get('/certification', certification);
 advisorRouter.post('/certification/celebrated', validate({ body: z.object({}).strict() }), celebrated);
 advisorRouter.get('/certificate.pdf', certificatePdfFile);
+// Oportunidades de mejora del sistema experto cuando el asesor no logra certificarse.
+advisorRouter.get('/opportunities', async (request, response) => {
+  response.json({ data: await advisorOpportunities(request.usuario!.id) });
+});

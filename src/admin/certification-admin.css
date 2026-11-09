@@ -37,3 +37,6 @@
 .cert-options { border: 1px solid var(--line); border-radius: 12px; padding: 8px 12px; max-height: 220px; overflow-y: auto; display: grid; gap: 4px; }
 .cert-option { display: flex; gap: 8px; align-items: flex-start; font-size: 0.88rem; }
 .cert-dossier h3 { margin: 18px 0 8px; }
+
+.cert-expert { margin: 22px 0; }
+.cert-expert h3 { margin-bottom: 6px; }

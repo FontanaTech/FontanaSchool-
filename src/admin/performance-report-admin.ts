@@ -49,14 +49,34 @@ function tipificaHtml(items: Report['tipifica']): string {
   </div>`;
 }
 
+// Lista priorizada de oportunidades de mejora (se usa en la ficha del asesor y en el expediente de certificación).
+export function opportunitiesHtml(opportunities: Opportunity[], empty = 'Sin oportunidades relevantes con los resultados disponibles. Aparecen cuando el asesor presenta Tipifica, el examen final o los demás módulos.'): string {
+  return opportunities.length ? `<ol class="perf-opps">${opportunities.map((item) => `<li class="perf-opp perf-opp--${item.severity}"><span class="perf-sev">Prioridad ${item.severity}</span><strong>${escapar(item.area)}</strong>
+    <p>${escapar(item.finding)}</p><p class="perf-reco"><b>Qué hacer:</b> ${escapar(item.recommendation)}</p><small>Repasar en: ${escapar(item.module)}${item.evidence ? ` · ${escapar(item.evidence)}` : ''}</small></li>`).join('')}</ol>`
+    : `<p class="dialog-note">${escapar(empty)}</p>`;
+}
+
+// Recomendación del sistema experto dentro del expediente de certificación.
+export async function mountDossierRecommendation(root: HTMLElement, userId: string): Promise<void> {
+  root.innerHTML = '<p class="loading-note" role="status">Analizando resultados con el sistema experto…</p>';
+  try {
+    const { data } = await api<{ data: Report & { certificationStatus: string } }>(`/admin/advisors/${encodeURIComponent(userId)}/performance-report`);
+    if (!root.isConnected) return;
+    const lead = data.certificationStatus === 'CERTIFICADO'
+      ? 'El asesor está certificado. Estos son los puntos que aún puede fortalecer en su operación.'
+      : 'Úsalo para decidir la validación o para acompañar al asesor antes de una reactivación.';
+    root.innerHTML = `<h3>Recomendación del sistema experto</h3><p class="dialog-note">${escapar(data.summary)} ${escapar(lead)}</p>${opportunitiesHtml(data.opportunities, 'El sistema experto no encontró falencias: el asesor respondió bien en el examen final, Tipifica y los módulos.')}`;
+  } catch (error) {
+    root.innerHTML = `<h3>Recomendación del sistema experto</h3><p class="dialog-error" role="alert">${escapar((error as Error).message)}</p>`;
+  }
+}
+
 function html(report: Report): string {
   return `<section class="auth-card admin-card perf-report">
     <div class="section-title"><div><h2>Informe de desempeño y oportunidades de mejora</h2><p>${escapar(report.summary)}</p></div></div>
     <div class="perf-block">
       <h3>Oportunidades de mejora</h3>
-      ${report.opportunities.length ? `<ol class="perf-opps">${report.opportunities.map((item) => `<li class="perf-opp perf-opp--${item.severity}"><span class="perf-sev">Prioridad ${item.severity}</span><strong>${escapar(item.area)}</strong>
-        <p>${escapar(item.finding)}</p><p class="perf-reco"><b>Qué hacer:</b> ${escapar(item.recommendation)}</p><small>Repasar en: ${escapar(item.module)}${item.evidence ? ` · ${escapar(item.evidence)}` : ''}</small></li>`).join('')}</ol>`
-        : '<p class="dialog-note">Sin oportunidades relevantes con los resultados disponibles. Aparecen cuando el asesor presenta Tipifica, el examen final o los demás módulos.</p>'}
+      ${opportunitiesHtml(report.opportunities)}
     </div>
     <div class="perf-block"><h3>Módulos</h3><div class="table-wrap"><table><thead><tr><th scope="col">Módulo</th><th scope="col">Estado</th><th scope="col">Avance</th></tr></thead><tbody>
       ${report.modules.map((module) => `<tr><td>${escapar(module.name)}</td><td>${escapar(STATUS_TEXT[module.status] ?? module.status)}${module.hasSeal ? ' · sello' : ''}</td><td>${bar(module.percent)} <b>${Math.round(module.percent)} %</b></td></tr>`).join('')}

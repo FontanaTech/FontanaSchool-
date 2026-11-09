@@ -24,12 +24,13 @@ export async function assertNotCertified(db: Tx | typeof prisma, userId: string)
 }
 
 async function availabilityFor(tx: Tx, userId: string, activityId: string, evaluation: Parameters<typeof computeAvailability>[0] & { id: string }, now: Date): Promise<Availability> {
-  const [attempts, overrides] = await Promise.all([
+  const [attempts, overrides, limit] = await Promise.all([
     // Todas las versiones de la evaluación: un cambio de configuración no reinicia los intentos usados.
     tx.attempt.findMany({ where: { userId, evaluation: { activityId } }, select: { id: true, number: true, status: true, overrideId: true, submittedAt: true, startedAt: true } }),
     overridesForUser(tx, userId).then((rows) => rows.filter((row) => row.activityId === activityId)),
+    tx.userAttemptLimit.findUnique({ where: { userId_activityId: { userId, activityId } }, select: { maxAttempts: true } }),
   ]);
-  return computeAvailability(initialEvaluation(evaluation), attempts, overrides, now);
+  return computeAvailability(initialEvaluation(evaluation, limit?.maxAttempts), attempts, overrides, now);
 }
 
 export async function startAttempt(userId: string, activityId: string, options: { now?: Date } = {}) {

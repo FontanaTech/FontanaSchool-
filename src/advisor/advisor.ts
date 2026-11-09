@@ -98,6 +98,22 @@ function card(module: ModuleView, current: boolean): string {
     </li>`;
 }
 
+// Oportunidades de mejora del sistema experto: aparecen cuando el asesor no logra certificarse (se queda sin
+// intentos en un módulo, no aprueba el examen general o su certificación es devuelta).
+type Improvement = { show: boolean; reason: string | null; summary: string; opportunities: { area: string; severity: 'alta' | 'media' | 'baja'; finding: string; recommendation: string; module: string }[] };
+function improvementHtml(improvement: Improvement | null): string {
+  if (!improvement?.show) return '';
+  return `<section class="improvement-panel" aria-labelledby="improvement-title">
+    <p class="improvement-kicker">TU PLAN DE MEJORA</p>
+    <h3 id="improvement-title">Esto es lo que debes reforzar</h3>
+    ${improvement.reason ? `<p class="improvement-reason">${escapar(improvement.reason)}</p>` : ''}
+    <ol class="improvement-list">${improvement.opportunities.map((item) => `<li class="improvement-item improvement-item--${item.severity}">
+      <span class="improvement-tag">${item.severity === 'alta' ? 'Prioridad alta' : 'Para mejorar'} · ${escapar(item.area)}</span>
+      <p>${escapar(item.finding)}</p><p><strong>Qué hacer:</strong> ${escapar(item.recommendation)}</p><small>Dónde repasar: ${escapar(item.module)}</small></li>`).join('')}</ol>
+    <p class="improvement-note">Repasa estos temas y, cuando estés listo, solicita la reactivación desde el módulo correspondiente.</p>
+  </section>`;
+}
+
 // Sección "Tu ruta de formación" en la práctica, justo debajo de "Tu camino en Fontana".
 export async function mountLearningPath(): Promise<void> {
   const main = document.querySelector('main');
@@ -109,9 +125,10 @@ export async function mountLearningPath(): Promise<void> {
   section.innerHTML = '<div class="training-route-head"><h2 id="training-route-title" class="training-route-sr">Tu ruta de formación</h2><div class="training-route-summary" data-route-summary hidden></div><p class="training-route-lead">Cinco módulos, una meta: convertirte en asesor certificado. Cada paso se desbloquea al aprobar el anterior.</p></div><p class="training-route-loading">Cargando tus módulos…</p>';
   if (camino) camino.after(section); else main.prepend(section);
   try {
-    const [{ data }, certification] = await Promise.all([
+    const [{ data }, certification, improvement] = await Promise.all([
       api<{ data: ModuleView[] }>('/advisor/modules'),
       api<{ data: CertificationSummary }>('/advisor/certification').then((response) => response.data).catch(() => null),
+      api<{ data: Improvement }>('/advisor/opportunities').then((response) => response.data).catch(() => null),
     ]);
     // El certificado es el resultado del examen, no una sexta tarjeta del recorrido.
     const modules = data.filter((module) => module.slug !== 'certificado');
@@ -124,7 +141,7 @@ export async function mountLearningPath(): Promise<void> {
     summary.innerHTML = `<strong>${done}<small> de ${modules.length}</small></strong><span>módulos completados</span><ol aria-hidden="true">${modules.map((module) => `<li${module.status === 'PASSED' ? ' class="is-done"' : ''}></li>`).join('')}</ol>`;
     // Aprobar el examen general desbloquea el paso 03 de «Tu camino en Fontana».
     if (examPassed(data)) camino?.querySelector('li:nth-child(3)')?.replaceWith(Object.assign(document.createElement('template'), { innerHTML: pasoEquipoDisponible() }).content);
-    section.insertAdjacentHTML('beforeend', `${certificationBanner(certification)}<p class="training-route-swipe-hint">Desliza para ver todos los módulos →</p><ol class="path-cards" tabindex="0" aria-label="Módulos de formación">${modules.map((module) => card(module, module === current)).join('')}</ol>`);
+    section.insertAdjacentHTML('beforeend', `${certificationBanner(certification)}${improvementHtml(improvement)}<p class="training-route-swipe-hint">Desliza para ver todos los módulos →</p><ol class="path-cards" tabindex="0" aria-label="Módulos de formación">${modules.map((module) => card(module, module === current)).join('')}</ol>`);
     // La primera vez después de la aprobación, la felicitación con el certificado. No se espera: el aula se
     // termina de mostrar y la felicitación aparece encima.
     if (certification?.status === 'CERTIFICADO') {

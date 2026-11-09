@@ -153,12 +153,13 @@ export async function loadSnapshot(db: Db, userId: string, now = new Date(), opt
     lastProgressAt: facts.lastProgressAt,
   });
   const availability = new Map<string, Availability>();
-  // El cupo inicial es único; los adicionales se conceden con excepciones auditadas.
-  for (const activityId of attemptLimits.keys()) attemptLimits.set(activityId, 1);
+  // Cupo de cada actividad: el individual del asesor o el de la evaluación vigente; los adicionales se conceden con
+  // excepciones auditadas (reactivaciones).
   for (const [activityId, evaluation] of evaluations) {
-    evaluations.set(activityId, initialEvaluation(evaluation));
+    const effective = initialEvaluation(evaluation, attemptLimits.get(activityId));
+    evaluations.set(activityId, effective);
     availability.set(activityId, computeAvailability(
-      initialEvaluation(evaluation),
+      effective,
       attempts.filter((attempt) => attempt.evaluation.activityId === activityId),
       overrides.filter((override) => override.activityId === activityId),
       now,
