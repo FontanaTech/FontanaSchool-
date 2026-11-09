@@ -2,6 +2,7 @@ import { createReadStream } from 'node:fs';
 import { mkdir, readFile, stat, writeFile, rename } from 'node:fs/promises';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
+import { fileURLToPath } from 'node:url';
 import type { Readable } from 'node:stream';
 import { env } from '../config/env.js';
 
@@ -80,10 +81,14 @@ export class LocalDiskStorage implements FileStorage {
 
 let instance: FileStorage | null = null;
 
-// STORAGE_DIR debe estar fuera del repositorio y de dist/, en almacenamiento persistente.
+// Carpeta `storage/` del proyecto: los audios del dictado se versionan en git para que viajen con el repositorio y
+// con el instalador de Electron. En un servidor real, STORAGE_DIR la apunta a un almacenamiento persistente aparte.
+// Se resuelve desde este archivo (no desde el directorio de trabajo): sirve igual con tsx, server-dist/ y Electron.
+const PROJECT_STORAGE = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..', 'storage');
+
 export function getStorage(): FileStorage {
   if (!instance) {
-    const root = env.STORAGE_DIR ?? path.resolve(process.cwd(), '..', 'fontana-storage');
+    const root = env.STORAGE_DIR ?? PROJECT_STORAGE;
     instance = new LocalDiskStorage(path.resolve(root));
   }
   return instance;

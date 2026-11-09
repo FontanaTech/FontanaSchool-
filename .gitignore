@@ -20,3 +20,6 @@ desktop/
 
 # Entorno de desarrollo de este ordenador
 .local/
+
+# Audios del dictado: se versionan en storage/ (solo se ignoran temporales de escritura)
+storage/*.tmp
