@@ -1,13 +1,13 @@
 ﻿import { escapar } from '../http';
 import { decorateTutorFeedback } from '../tutor/feedback';
 
-type Case = { concept: string; prompt: string; choices: readonly { text: string; correct: boolean; feedback: string }[] };
+export type QuickChallengeCase = { concept: string; prompt: string; choices: readonly { text: string; correct: boolean; feedback: string }[] };
 const ok = (text: string, feedback: string) => ({ text, correct: true, feedback });
 const no = (text: string, feedback: string) => ({ text, correct: false, feedback });
 
 // Retos rápidos de cada bloque: preguntas cortas de dos opciones para afianzar lo visto en las tarjetas.
 // La validación formal de conocimientos la hace el examen final.
-export const CHALLENGES: Record<string, readonly Case[]> = {
+export const CHALLENGES: Record<string, readonly QuickChallengeCase[]> = {
   conceptos: [
     { concept: 'Producto', prompt: 'Camila pregunta: «¿De dónde sale mi saldo?»', choices: [
       ok('Reviso el detalle en la fuente autorizada y se lo explico.', 'Primero verifica qué se cobra; después explícalo con claridad.'),
@@ -107,23 +107,25 @@ export const CHALLENGES: Record<string, readonly Case[]> = {
 // Tiempo mínimo para leer «¡Correcto!» y su explicación antes de pasar solo; crece con la longitud del texto.
 const CORRECT_BASE_MS = 1800;
 const CORRECT_PER_CHAR_MS = 35;
+const WRONG_BASE_MS = 2600;
 
 export type QuickChallengeState = { index: number; answers: (number | undefined)[]; finished: boolean };
 
-export function mountQuickChallenge(root: HTMLElement, state: QuickChallengeState, options: { cases: readonly Case[]; continueLabel: string; onContinue: () => void; saving: boolean; error: string }): void {
+export function mountQuickChallenge(root: HTMLElement, state: QuickChallengeState, options: { cases: readonly QuickChallengeCase[]; continueLabel: string; onContinue: () => void; saving: boolean; error: string; onFinished?: () => void }): void {
   const cases = options.cases;
   let timer: number | undefined;
   let clearTutor: (() => void) | undefined;
   let advancing = false;
+  let entryMotion: 'initial' | 'next' = 'initial';
   const calm = () => window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
   const selectedChoice = () => { const selected = state.answers[state.index]; return selected === undefined ? undefined : cases[state.index]!.choices[selected]; };
-  const choicesHtml = (item: Case, selected: number | undefined) => item.choices.map((choice, position) => {
+  const choicesHtml = (item: QuickChallengeCase, selected: number | undefined) => item.choices.map((choice, position) => {
     const answer = selected === undefined ? undefined : item.choices[selected];
     const mark = !answer ? '' : choice.correct ? 'is-correct' : selected === position ? 'is-wrong' : 'is-dimmed';
     return `<button type="button" data-quick-answer="${position}" aria-pressed="${selected === position}"${answer ? ' disabled' : ''} class="${mark}"><span aria-hidden="true">${!answer ? String.fromCharCode(65 + position) : choice.correct ? '✓' : selected === position ? '✕' : String.fromCharCode(65 + position)}</span>${escapar(choice.text)}</button>`;
   }).join('');
-  const verdictHtml = (item: Case, selected: number | undefined) => {
+  const verdictHtml = (item: QuickChallengeCase, selected: number | undefined) => {
     const answer = selected === undefined ? undefined : item.choices[selected];
     if (!answer) return '';
     const right = item.choices.find((choice) => choice.correct)!;
@@ -133,11 +135,10 @@ export function mountQuickChallenge(root: HTMLElement, state: QuickChallengeStat
         <p>${escapar(answer.correct ? answer.feedback : right.feedback)}</p>
       </div>`;
   };
-  const footerHtml = (answer: Case['choices'][number] | undefined) => {
-    const next = `<button type="button" data-quick-continue class="collections-primary">${state.index === cases.length - 1 ? 'Ver resultado' : 'Continuar'} →</button>`;
-    return !answer ? '<span>Si aciertas, avanzas automáticamente.</span>'
-      : answer.correct ? `<span>Pasando al siguiente reto…</span>${next}`
-        : `<span>Lee la corrección y continúa cuando estés listo.</span>${next}`;
+  const footerHtml = (answer: QuickChallengeCase['choices'][number] | undefined) => {
+    return !answer ? '<span>Elige una respuesta para continuar automáticamente.</span>'
+      : answer.correct ? '<span>Pasando al siguiente reto…</span>'
+        : '<span>Lee la corrección. Pasando al siguiente reto…</span>';
   };
   const decorate = () => {
     clearTutor?.(); clearTutor = undefined;
@@ -152,7 +153,7 @@ export function mountQuickChallenge(root: HTMLElement, state: QuickChallengeStat
     const selected = state.answers[state.index];
     const answer = selectedChoice();
     const hits = cases.filter((entry, position) => state.answers[position] !== undefined && entry.choices[state.answers[position]!]!.correct).length;
-    root.innerHTML = `<section class="collections-quick-challenge ${state.finished ? '' : answer ? answer.correct ? 'is-correct' : 'is-wrong' : ''}" aria-labelledby="quick-challenge-title">
+    root.innerHTML = `<section class="collections-quick-challenge ${state.finished ? '' : answer ? answer.correct ? 'is-correct' : 'is-wrong' : ''}" data-motion="${entryMotion}" aria-labelledby="quick-challenge-title">
       <header><h3 id="quick-challenge-title" tabindex="-1">Reto rápido</h3><span>${state.finished ? 'Completado' : `${state.index + 1} de ${cases.length}`}</span></header>
       <div class="collections-quick-meter" role="progressbar" aria-label="Retos resueltos" aria-valuemin="0" aria-valuemax="${cases.length}" aria-valuenow="${state.finished ? cases.length : state.index}">${cases.map((_, position) => `<span class="${state.finished || position < state.index ? 'is-complete' : position === state.index ? 'is-current' : ''}"></span>`).join('')}</div>
       ${state.finished ? `<div class="collections-quick-emblem" aria-hidden="true"><svg viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m7 16 6 6 12-13"/></svg></div><p class="collections-quick-finish" role="status">¡Terminaste el reto! Acertaste ${hits} de ${cases.length}.</p>
@@ -166,7 +167,6 @@ export function mountQuickChallenge(root: HTMLElement, state: QuickChallengeStat
     </section>`;
     decorate();
     root.querySelector('[data-concept-continue]')?.addEventListener('click', options.onContinue);
-    root.querySelector('[data-quick-continue]')?.addEventListener('click', advance);
     root.querySelectorAll<HTMLButtonElement>('[data-quick-answer]').forEach((button) => button.addEventListener('click', () => choose(Number(button.dataset.quickAnswer))));
   }
 
@@ -182,9 +182,8 @@ export function mountQuickChallenge(root: HTMLElement, state: QuickChallengeStat
     section.querySelector('.collections-quick-choices')!.insertAdjacentHTML('afterend', verdictHtml(item, choice));
     const footer = section.querySelector('footer')!;
     footer.innerHTML = footerHtml(answer);
-    footer.querySelector('[data-quick-continue]')?.addEventListener('click', advance);
     decorate();
-    root.querySelector<HTMLElement>(answer.correct ? '#quick-challenge-feedback' : '[data-quick-continue]')?.focus({ preventScroll: true });
+    root.querySelector<HTMLElement>('#quick-challenge-feedback')?.focus({ preventScroll: true });
     schedule();
   }
 
@@ -198,8 +197,10 @@ export function mountQuickChallenge(root: HTMLElement, state: QuickChallengeStat
       advancing = false;
       if (!root.isConnected) return;
       if (state.index === cases.length - 1) state.finished = true; else state.index++;
+      entryMotion = 'next';
       render();
       root.querySelector<HTMLElement>(state.finished ? '#quick-challenge-title' : '#quick-challenge-question')?.focus({ preventScroll: true });
+      if (state.finished) options.onFinished?.();
     };
     advancing = true;
     if (!section || calm()) { swap(); return; }
@@ -208,13 +209,14 @@ export function mountQuickChallenge(root: HTMLElement, state: QuickChallengeStat
     window.setTimeout(swap, 400); // respaldo si el navegador no emite el fin de la transición
   }
 
-  // Un acierto avanza solo cuando hubo tiempo de leerlo; también al volver a esta tarjeta si se salió antes.
+  // Cualquier respuesta avanza sola después de dar tiempo para leer el resultado.
   function schedule(): void {
     const answer = selectedChoice();
-    if (state.finished || !answer?.correct) return;
+    if (state.finished || !answer) return;
     const index = state.index;
     window.clearTimeout(timer);
-    timer = window.setTimeout(() => { if (state.index === index && !state.finished && root.isConnected) advance(); }, CORRECT_BASE_MS + answer.feedback.length * CORRECT_PER_CHAR_MS);
+    const delay = (answer.correct ? CORRECT_BASE_MS : WRONG_BASE_MS) + answer.feedback.length * CORRECT_PER_CHAR_MS;
+    timer = window.setTimeout(() => { if (state.index === index && !state.finished && root.isConnected) advance(); }, delay);
   }
   render();
   schedule();

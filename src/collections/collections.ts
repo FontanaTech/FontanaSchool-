@@ -24,6 +24,7 @@ export async function mountCollections(container: HTMLElement, backHref: string)
   let saving = false;
   let error = '';
   let examResult: ExamResult | null = null;
+  let savingOverlay: HTMLElement | null = null;
   const slides = new Map<string, number>();
   const challenges = new Map<string, QuickChallengeState>();
   const guidedCase = createGuidedCaseState();
@@ -41,6 +42,22 @@ export async function mountCollections(container: HTMLElement, backHref: string)
     return challenges.get(key)!;
   }
   function focus(id: string): void { container.querySelector<HTMLElement>(`#${id}`)?.focus(); }
+  function setSavingScreen(active: boolean, blockTitle = 'el siguiente bloque'): void {
+    savingOverlay?.remove();
+    savingOverlay = null;
+    container.inert = active;
+    if (!active) return;
+    const overlay = document.createElement('div');
+    overlay.className = 'collections-saving-overlay';
+    overlay.setAttribute('role', 'dialog');
+    overlay.setAttribute('aria-modal', 'true');
+    overlay.setAttribute('aria-labelledby', 'collections-saving-title');
+    overlay.setAttribute('aria-describedby', 'collections-saving-detail');
+    overlay.innerHTML = `<div class="collections-saving-dialog"><img src="/imagenes/fontana-logo.webp" alt="Fontana" width="64" height="64"><p class="collections-saving-brand">FONTANA SCHOOL</p><span class="collections-saving-spinner" aria-hidden="true"></span><h2 id="collections-saving-title" tabindex="-1">Guardando tu avance</h2><p id="collections-saving-detail" role="status">Estamos conservando tu progreso antes de pasar a ${escapar(blockTitle)}.</p><p class="collections-saving-reminder"><strong>Un momento.</strong> No cierres esta ventana.</p></div>`;
+    document.body.append(overlay);
+    savingOverlay = overlay;
+    overlay.querySelector<HTMLElement>('#collections-saving-title')?.focus({ preventScroll: true });
+  }
   function lessonHtml(block: Block): string {
     if (block.key === 'conceptos') return `<p class="fontana-concepts-intro">Cinco claves para iniciar tu gestión.</p><div id="collections-concepts-slider"></div>`;
     if (isGuidedBlock(block.key)) return '<div id="collections-guided-case"></div>';
@@ -48,8 +65,9 @@ export async function mountCollections(container: HTMLElement, backHref: string)
   }
   async function continueBlock(block: Block): Promise<void> {
     if (saving || !(isGuidedBlock(block.key) ? guidedCase.progress[block.key].finished : challengeOf(block.key).finished)) return;
-    // Mientras se guarda solo cambia el botón: la lección no se reconstruye ni pierde el foco ni su avance.
+    // La pantalla de carga bloquea la interacción mientras se conserva el avance.
     saving = true; error = '';
+    setSavingScreen(true, state.blocks[state.blocks.findIndex((item) => item.key === block.key) + 1]?.title ?? 'el siguiente bloque');
     container.querySelectorAll<HTMLButtonElement>('[data-concept-continue], [data-case-continue]').forEach((button) => { button.disabled = true; button.textContent = 'Guardando…'; });
     container.querySelectorAll('[aria-busy]').forEach((section) => section.setAttribute('aria-busy', 'true'));
     try {
@@ -60,12 +78,14 @@ export async function mountCollections(container: HTMLElement, backHref: string)
       saving = false;
       if (!wasComplete && state.complete) {
         await playSeal({ moduleName: 'Inducción a las cobranzas', moduleNumber: 2, label: 'COMPLETADO', nextName: 'Enfréntate a la objeción' });
+        setSavingScreen(false);
         window.location.assign(backHref);
         return;
       }
+      setSavingScreen(false);
       render(); focus('block-title');
     } catch (cause) {
-      saving = false; error = (cause as Error).message; render(); focus('collections-error');
+      saving = false; setSavingScreen(false); error = (cause as Error).message; render(); focus('collections-error');
     }
   }
   async function submitExam(answers: Record<string, string>): Promise<void> {

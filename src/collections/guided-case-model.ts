@@ -56,14 +56,16 @@ export const GUIDED_BLOCKS = {
     doneTitle: '¡Posibilidades identificadas!', doneText: 'Practicaste Pago total, Abono + fechas, Descuento con el líder y Fecha Acuerdo Pago total.', nextLabel: 'Continuar al bloque 05 · Cierre y seguimiento →',
   },
   seguimiento: {
-    intro: 'Practica cuatro situaciones de Camila. Acierta la tipificación para abrir el siguiente caso.',
+    intro: 'Practica seis situaciones de Camila. Acierta la tipificación para abrir el siguiente caso.',
     steps: [
       { key: 'registro', title: 'Tipifica la situación', short: 'Elige el resultado de la gestión.' },
       { key: 'registro', title: 'Tipifica la situación', short: 'Elige el resultado de la gestión.' },
       { key: 'registro', title: 'Tipifica la situación', short: 'Elige el resultado de la gestión.' },
       { key: 'registro', title: 'Tipifica la situación', short: 'Elige el resultado de la gestión.' },
+      { key: 'registro', title: 'Tipifica la situación', short: 'Elige el resultado de la gestión.' },
+      { key: 'registro', title: 'Tipifica la situación', short: 'Elige el resultado de la gestión.' },
     ],
-    doneTitle: '¡Cuatro casos completados!', doneText: 'Identificaste correctamente el resultado de cada gestión.', nextLabel: 'Continuar al examen final →',
+    doneTitle: '¡Seis casos completados!', doneText: 'Identificaste correctamente el resultado de cada gestión.', nextLabel: 'Continuar al examen final →',
   },
 } as const;
 export type GuidedBlockKey = keyof typeof GUIDED_BLOCKS;
@@ -79,37 +81,53 @@ export const INFORMATION_QUESTIONS: Choice[] = [
   { value: 'posibilidad', text: PAYMENT_QUESTION, feedback: '' },
   { value: 'imponer', text: 'Tiene que pagar todo hoy, sin falta.', feedback: 'No impongas un pago sin escuchar. Pregunta qué posibilidad tiene la titular.' },
 ];
+// Tipificaciones del ejercicio, alineadas con las opciones de contacto directo de Control Next.
 export const REGISTRATION_RESULTS = [
+  { value: 'paz-salvo', text: 'Paz y Salvo' },
+  { value: 'acuerdo-total', text: 'Acuerdo de pago Total' },
+  { value: 'acuerdo-abono', text: 'Acuerdo de pago Abono' },
+  { value: 'recordar', text: 'Recordar' },
+  { value: 'volver-llamar', text: 'Volver a llamar' },
+  { value: 'incumplido', text: 'Incumplido' },
   { value: 'sin-acuerdo', text: 'No hubo acuerdo' },
-  { value: 'voluntad', text: 'Voluntad de pago' },
-  { value: 'tercero', text: 'Contacto con un tercero' },
-  { value: 'no-contesta', text: 'El cliente no contesta' },
 ] as const;
 export type RegistrationOutcome = typeof REGISTRATION_RESULTS[number]['value'];
 export const REGISTRATION_PRACTICE: { expected: RegistrationOutcome; situation: string; feedback: string; note: string }[] = [
   {
+    expected: 'paz-salvo',
+    situation: 'Camila confirma que pagó los $400.000 completos. Verificas el pago en la fuente autorizada y el saldo queda en cero.',
+    feedback: 'El pago total está confirmado y no queda saldo pendiente. La gestión corresponde a Paz y Salvo.',
+    note: 'Pago total confirmado en la fuente autorizada. Registrar Paz y Salvo.',
+  },
+  {
+    expected: 'acuerdo-total',
+    situation: 'Camila confirma que pagará los $400.000 completos el 20 de noviembre de 2026.',
+    feedback: 'Acordó pagar el saldo completo en una fecha futura. Corresponde Acuerdo de pago Total.',
+    note: 'Compromiso de pago por el saldo completo con fecha definida. Registrar Acuerdo de pago Total.',
+  },
+  {
+    expected: 'acuerdo-abono',
+    situation: 'Camila acuerda abonar $100.000 y cancelar los $300.000 restantes en las fechas definidas.',
+    feedback: 'El compromiso es parcial y tiene fechas para completar el saldo. Corresponde Acuerdo de pago Abono.',
+    note: 'Abono acordado y saldo restante con fechas definidas. Registrar Acuerdo de pago Abono.',
+  },
+  {
+    expected: 'volver-llamar',
+    situation: 'Camila contesta, pero está en una reunión y solicita que la llames nuevamente mañana a las 10:00 a. m.',
+    feedback: 'La titular pidió expresamente una nueva llamada con fecha y hora. Corresponde Volver a llamar.',
+    note: 'Solicitud expresa de devolución de llamada con fecha y hora definidas.',
+  },
+  {
+    expected: 'incumplido',
+    situation: 'Camila había acordado pagar el 20 de noviembre, pero la fecha pasó y no se registra el pago en la fuente autorizada.',
+    feedback: 'Existía un compromiso que no se cumplió y el pago no está confirmado. Corresponde Incumplido.',
+    note: 'Compromiso vencido sin pago confirmado. Registrar Incumplido y gestionar según el procedimiento.',
+  },
+  {
     expected: 'sin-acuerdo',
-    situation: 'Hablaste con Camila sobre su saldo de $400.000. Dice que no realizará un pago y la conversación termina sin acuerdo.',
-    feedback: 'Sí hablaste con la titular, pero no aceptó una alternativa ni expresó intención de pagar. No hubo acuerdo.',
-    note: 'Contacto con titular, sin acuerdo. Registrar el resultado y definir la próxima acción según el procedimiento interno.',
-  },
-  {
-    expected: 'voluntad',
-    situation: 'Camila dice: «Quiero pagar mi deuda, pero debo revisar mis ingresos para decirle cuánto y cuándo». Todavía no confirma monto ni fecha.',
-    feedback: 'Camila expresa intención de pagar. Eso es voluntad de pago; todavía no es un compromiso con monto y fecha ni un pago confirmado.',
-    note: 'Titular manifiesta voluntad de pago, sin monto ni fecha definidos. Queda pendiente concretar una alternativa autorizada.',
-  },
-  {
-    expected: 'tercero',
-    situation: 'Contesta una persona que dice ser familiar de Camila y que ella no está disponible. No hablaste con la titular ni compartiste información de la deuda.',
-    feedback: 'Respondió alguien distinto de Camila. Registra contacto con un tercero; no lo registres como contacto con la titular.',
-    note: 'Contacto con un tercero; titular no disponible. No se compartió información de la deuda. Próxima acción según protocolo interno.',
-  },
-  {
-    expected: 'no-contesta',
-    situation: 'Realizas el intento de contacto con Camila, pero nadie responde. No hubo conversación con ella ni con otra persona.',
-    feedback: 'Nadie respondió. Registra que el cliente no contesta; no hubo contacto con titular ni con un tercero.',
-    note: 'Intento de contacto sin respuesta. Registrar el intento y definir el seguimiento según el procedimiento interno.',
+    situation: 'Hablaste con Camila sobre su saldo de $400.000. No acepta ninguna alternativa y la conversación termina sin acuerdo.',
+    feedback: 'Hablaste con la titular, pero no aceptó una alternativa ni expresó un compromiso. Corresponde No hubo acuerdo.',
+    note: 'Contacto con titular sin acuerdo. Registrar No hubo acuerdo y definir la próxima acción autorizada.',
   },
 ];
 
@@ -196,7 +214,7 @@ export function advanceGuidedCase(state: GuidedCaseState, block: GuidedBlockKey)
   return error;
 }
 export function caseGreeting(state: GuidedCaseState): string {
-  return `${state.greeting}. ¿Me comunico con la señora ${state.holder.trim() || 'Camila Rojas'}?`;
+  return `${state.greeting}. ¿Me comunico con la señora ${state.holder.trim() || '[nombre de la titular]'}?`;
 }
 export function casePresentation(state: GuidedCaseState): string {
   return `Mi nombre es ${state.advisor.trim() || '[tu nombre]'}, me comunico de ${AGENCY} para ${state.portfolio.trim() || '[nombre de la cartera]'}. ¡Espero se encuentre muy bien!`;
