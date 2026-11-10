@@ -49,6 +49,18 @@ function activeRuntime() {
   return { dir: bundled, manifest: bundledManifest };
 }
 
+// Borra las versiones descargadas que no se usan. Se hace al arrancar, antes de iniciar el servidor: mientras la
+// aplicación corre, Windows mantiene bloqueados los archivos de la versión activa y borrarla falla (EBUSY).
+function removeUnusedRuntimes(keepDir) {
+  let entries = [];
+  try { entries = fs.readdirSync(updatesDir(), { withFileTypes: true }); } catch { return; }
+  for (const entry of entries) {
+    const dir = path.join(updatesDir(), entry.name);
+    if (!entry.isDirectory() || dir === keepDir) continue;
+    try { fs.rmSync(dir, { recursive: true, force: true }); } catch { /* se vuelve a intentar en el próximo arranque */ }
+  }
+}
+
 function parseEnv(text) {
   const out = {};
   for (const raw of text.split(/\r?\n/)) {
@@ -122,6 +134,7 @@ async function createWindow() {
     await mainWindow.loadURL(splash('No se encontró la aplicación compilada.\nVuelve a instalar Fontana School.'));
     return;
   }
+  removeUnusedRuntimes(runtime.dir);
   try {
     startServer(runtime);
     await waitForServer();
@@ -195,10 +208,7 @@ ipcMain.handle('desktop:update', async (event) => {
   fs.rmSync(zip, { force: true });
   if (!readManifest(target) || !fs.existsSync(path.join(target, 'server', 'server.mjs'))) throw new Error('La actualización descargada está incompleta.');
   fs.writeFileSync(pointerFile(), JSON.stringify({ folder, installedAt: new Date().toISOString() }));
-  // Borra versiones viejas descargadas (conserva la nueva).
-  for (const entry of fs.readdirSync(updatesDir(), { withFileTypes: true })) {
-    if (entry.isDirectory() && entry.name !== folder) fs.rmSync(path.join(updatesDir(), entry.name), { recursive: true, force: true });
-  }
+  // La versión anterior (la que está corriendo ahora) se borra en el próximo arranque: ver removeUnusedRuntimes.
   send('Reiniciando…', 100);
   setTimeout(() => { app.relaunch(); app.exit(0); }, 800);
   return { ok: true, tag: release.tag };
