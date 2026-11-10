@@ -18,7 +18,7 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '.
 const args = new Set(process.argv.slice(2));
 const publish = args.has('--publish');
 const installer = !args.has('--no-installer');
-const REPO = 'JUANESTEBANORTIZRENDON/Aplicativo-FontanaSchoolGuide';
+const REPO = 'FontanaTech/FontanaSchool-';
 
 // Todo se arma en el disco local del equipo (la unidad de red es lenta y da problemas con el empaquetado).
 const work = path.join(os.tmpdir(), 'fontana-desktop-build');
