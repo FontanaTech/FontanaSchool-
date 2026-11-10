@@ -60,7 +60,10 @@ export async function mountCollections(container: HTMLElement, backHref: string)
   }
   function lessonHtml(block: Block): string {
     if (block.key === 'conceptos') return `<p class="fontana-concepts-intro">Cinco claves para iniciar tu gestión.</p><div id="collections-concepts-slider"></div>`;
-    if (isGuidedBlock(block.key)) return '<div id="collections-guided-case"></div>';
+    if (isGuidedBlock(block.key)) return `${block.key === 'seguimiento' ? `<aside class="collections-reference-card" aria-labelledby="collections-codes-guide-title">
+      <div><p class="collections-kicker">CONSULTA RÁPIDA</p><h3 id="collections-codes-guide-title">Guía de códigos de gestión</h3><p>Consulta el instructivo mientras practicas cómo registrar el resultado, el compromiso y el seguimiento de cada gestión.</p></div>
+      <a class="collections-reference-link" href="/manuales/codigos-de-gestion.pdf" target="_blank" rel="noopener noreferrer">Abrir instructivo (PDF) <span aria-hidden="true">↗</span></a>
+    </aside>` : ''}<div id="collections-guided-case"></div>`;
     return '';
   }
   async function continueBlock(block: Block): Promise<void> {
