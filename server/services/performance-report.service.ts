@@ -14,17 +14,24 @@ const TIPIFICA_SLUG = 'tipificacion-llamadas';
 // Informe de desempeño del asesor para el panel administrativo: resultados del examen final, del ejercicio de
 // Tipifica y de los módulos, con las falencias detectadas y las oportunidades de mejora.
 export async function getPerformanceReport(userId: string, now = new Date()) {
-  const user = await findPublicById(prisma, userId);
-  if (!user || user.rol !== Role.ADVISOR) throw new NotFoundError('Asesor no encontrado.', 'ADVISOR_NOT_FOUND');
-
-  const attempts = await prisma.attempt.findMany({
-    where: { userId, submittedAt: { not: null }, evaluation: { activity: { module: { slug: { in: [FINAL_EXAM_SLUG, TIPIFICA_SLUG, OBJECTIONS_SLUG] } } } } },
+  // Cada viaje a la base cuesta lo mismo (~0,1 s en la nube): las lecturas independientes van a la vez. Los intentos
+  // se piden por módulo para no cargar la cadena evaluación → actividad → módulo (una consulta por nivel).
+  const submittedAttempts = (slug: string) => prisma.attempt.findMany({
+    where: { userId, submittedAt: { not: null }, evaluation: { activity: { module: { slug } } } },
     orderBy: { submittedAt: 'desc' },
-    select: { id: true, evaluation: { select: { activity: { select: { module: { select: { slug: true } } } } } } },
+    select: { id: true },
   });
-  const results = await attemptResults(prisma, attempts.map((attempt) => attempt.id));
-  const bySlug = (slug: string): AttemptResult[] => attempts
-    .filter((attempt) => attempt.evaluation.activity.module?.slug === slug)
+  const [user, examRows, tipificaRows, objectionRows] = await Promise.all([
+    findPublicById(prisma, userId), submittedAttempts(FINAL_EXAM_SLUG), submittedAttempts(TIPIFICA_SLUG), submittedAttempts(OBJECTIONS_SLUG),
+  ]);
+  if (!user || user.rol !== Role.ADVISOR) throw new NotFoundError('Asesor no encontrado.', 'ADVISOR_NOT_FOUND');
+  const attemptsBySlug = new Map([[FINAL_EXAM_SLUG, examRows], [TIPIFICA_SLUG, tipificaRows], [OBJECTIONS_SLUG, objectionRows]]);
+  // El estado de formación solo se carga para un asesor válido (puede inicializar su progreso).
+  const [results, snapshot] = await Promise.all([
+    attemptResults(prisma, [...examRows, ...tipificaRows, ...objectionRows].map((attempt) => attempt.id)),
+    loadSnapshot(prisma, userId, now, { sync: false }),
+  ]);
+  const bySlug = (slug: string): AttemptResult[] => (attemptsBySlug.get(slug) ?? [])
     .map((attempt) => results.get(attempt.id)).filter((result): result is AttemptResult => Boolean(result));
 
   // Examen final: el intento más reciente con su detalle por tema y las preguntas falladas.
@@ -51,7 +58,6 @@ export async function getPerformanceReport(userId: string, now = new Date()) {
   }).sort((a, b) => a.number - b.number);
 
   const objectionsGrade = bySlug(OBJECTIONS_SLUG).find((result) => result.objections)?.objections ?? null;
-  const snapshot = await loadSnapshot(prisma, userId, now, { sync: false });
   const modules = [...snapshot.views].sort((a, b) => a.order - b.order).map((view) => ({ name: view.name, status: view.status, percent: Number(view.progressPercent), hasSeal: view.hasSeal }));
 
   const opportunities = buildOpportunities({

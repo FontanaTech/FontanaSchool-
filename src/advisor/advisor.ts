@@ -53,11 +53,11 @@ function certificationBanner(certification: CertificationSummary | null): string
 type CardState = 'active' | 'completed' | 'locked' | 'available';
 
 const MODULE_IMAGES: Record<string, string> = {
-  'ofimatica-mecanografia': '/imagenes/ofimatica-cobranzas-ilustracion.png',
-  'induccion-cobranzas': '/imagenes/induccion-cobranzas-ilustracion.png',
-  'simulador-cobranzas': '/imagenes/enfrentate-objecion-ilustracion.png',
-  'tipificacion-llamadas': '/imagenes/tipificacion-llamadas-ilustracion.png',
-  'examen-general': '/imagenes/certificado-ilustracion.png',
+  'ofimatica-mecanografia': '/imagenes/ofimatica-cobranzas-ilustracion.webp',
+  'induccion-cobranzas': '/imagenes/induccion-cobranzas-ilustracion.webp',
+  'simulador-cobranzas': '/imagenes/enfrentate-objecion-ilustracion.webp',
+  'tipificacion-llamadas': '/imagenes/tipificacion-llamadas-ilustracion.webp',
+  'examen-general': '/imagenes/certificado-ilustracion.webp',
 };
 
 function stateIcon(state: CardState): string {

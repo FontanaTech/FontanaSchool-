@@ -35,7 +35,7 @@ export async function getModuleState(userId: string, now = new Date(), preloaded
       })
       : null,
     view.hasSeal ? prisma.seal.findFirst({ where: { userId, moduleId: activities.moduleId, status: 'ACTIVE' }, orderBy: { issuedAt: 'desc' } }) : null,
-    describeNext(userId).catch(() => null),
+    describeNext(userId, activities.bySection.ortografia?.status === 'ACTIVE' ? activities.bySection.ortografia.id : undefined).catch(() => null),
     prisma.excelActivity.count({ where: { status: 'ACTIVE' } }),
     typingActivity ? practicePending(userId, typingActivity.id) : false,
     prisma.dictationAttemptResult.findFirst({ where: { attempt: { userId }, completedAt: { not: null } }, orderBy: { completedAt: 'desc' }, select: { passed: true } }),

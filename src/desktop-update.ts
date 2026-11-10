@@ -1,5 +1,7 @@
 // Botón «Buscar actualizaciones» del inicio de sesión. Solo existe en la aplicación de escritorio (Electron), que
 // expone window.fontanaDesktop; en el navegador no aparece nada.
+import { escapar as text } from './http';
+
 type Manifest = { tag: string; commit: string; version: string; builtAt: string } | null;
 type Check = { available: boolean; current: Manifest; message?: string; latest?: { tag: string; name: string; publishedAt: string; notes: string; size: number } };
 type Desktop = {
@@ -11,7 +13,6 @@ type Desktop = {
 
 const desktop = (): Desktop | undefined => (window as unknown as { fontanaDesktop?: Desktop }).fontanaDesktop;
 const date = (iso: string | undefined): string => (iso ? new Date(iso).toLocaleString('es-CO', { dateStyle: 'medium', timeStyle: 'short' }) : '—');
-const text = (value: string): string => value.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
 
 export function mountDesktopUpdate(card: HTMLElement): void {
   const api = desktop();

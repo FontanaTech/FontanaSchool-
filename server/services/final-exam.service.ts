@@ -19,9 +19,12 @@ import { certifyAfterFinalExam } from './automatic-certification.service.js';
 // en el intento (con su orden); cada respuesta se guarda al marcarla; al enviar califica el servidor con el banco.
 
 async function access(db: Db, userId: string) {
-  const user = await db.usuario.findUnique({ where: { id: userId }, select: { rol: true, estado: true } });
+  // El usuario (siempre un asesor: la ruta exige el rol) y su estado de formación se consultan a la vez.
+  const [user, snapshot] = await Promise.all([
+    db.usuario.findUnique({ where: { id: userId }, select: { rol: true, estado: true } }),
+    loadSnapshot(db, userId),
+  ]);
   if (!user || user.rol !== 'asesor' || user.estado !== 'activo') throw new ForbiddenError('Este examen es para asesores activos.');
-  const snapshot = await loadSnapshot(db, userId);
   const view = snapshot.views.find((item) => item.slug === FINAL_EXAM_SLUG);
   if (!view) throw new NotFoundError('El examen general no está configurado.', 'MODULE_NOT_FOUND');
   if (!view.enabled) throw new ForbiddenError(view.blockedReason ?? 'Examen no disponible.', 'MODULE_BLOCKED', { blockedReason: view.blockedReason });
@@ -34,8 +37,11 @@ async function access(db: Db, userId: string) {
 }
 
 function questionsOf(rows: { questionId: string; optionId: string | null }[]) {
-  // selected es la opción que marcó el asesor (nunca la correcta).
-  return rows.map((row) => ({ question: publicQuestion(findQuestion(row.questionId)!), selected: isLetter(row.optionId) ? row.optionId : null }));
+  // selected es la opción que marcó el asesor (nunca la correcta). Una pregunta retirada del banco se omite.
+  return rows.flatMap((row) => {
+    const question = findQuestion(row.questionId);
+    return question ? [{ question: publicQuestion(question), selected: isLetter(row.optionId) ? row.optionId : null }] : [];
+  });
 }
 
 export async function finalExamState(userId: string) {
@@ -47,9 +53,13 @@ export async function finalExamState(userId: string) {
   ]);
   const last = attempts.find((attempt) => attempt.submittedAt);
   const status = evaluationStatusOf({ availability, lastAttemptFailed: last?.status === 'FAILED', pendingRequest: Boolean(pending) });
-  const open = availability?.openAttemptId
-    ? await prisma.attemptAnswer.findMany({ where: { attemptId: availability.openAttemptId }, orderBy: { position: 'asc' }, select: { questionId: true, optionId: true } })
-    : null;
+  // Las respuestas del intento abierto y el resultado del último enviado no dependen entre sí: se piden a la vez.
+  const [open, results] = await Promise.all([
+    availability?.openAttemptId
+      ? prisma.attemptAnswer.findMany({ where: { attemptId: availability.openAttemptId }, orderBy: { position: 'asc' }, select: { questionId: true, optionId: true } })
+      : null,
+    last ? attemptResults(prisma, [last.id]) : null,
+  ]);
   return {
     activityId: activity.id,
     reviewMode: snapshot.certification.status === 'CERTIFICADO',
@@ -60,7 +70,7 @@ export async function finalExamState(userId: string) {
     reactivationRequestedAt: pending?.createdAt.toISOString() ?? null,
     nextRoute: snapshot.views.find((item) => item.order === view.order + 1)?.route ?? null,
     inProgress: open ? { attemptId: availability!.openAttemptId!, answered: open.filter((row) => row.optionId).length, total: open.length } : null,
-    result: last ? (await attemptResults(prisma, [last.id])).get(last.id) ?? null : null,
+    result: last ? results?.get(last.id) ?? null : null,
   };
 }
 

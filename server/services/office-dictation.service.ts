@@ -53,16 +53,20 @@ async function latestExercises(db: Tx | typeof prisma) {
   return [...latest.values()].filter(isPlayable);
 }
 
-// Ejercicio para el asesor: el de su intento abierto o el menos usado.
-export async function nextExercise(userId: string, db: Tx | typeof prisma = prisma) {
-  const activityId = await dictationActivityId(db);
-  const open = await db.dictationAttemptResult.findFirst({
-    where: { attempt: { userId, status: 'IN_PROGRESS', evaluation: { activityId } } }, include: { exercise: true },
-  });
+// Ejercicio para el asesor: el de su intento abierto o el menos usado. Si quien llama ya conoce la actividad del
+// dictado (el estado del módulo), se ahorra esa consulta.
+export async function nextExercise(userId: string, db: Tx | typeof prisma = prisma, knownActivityId?: string) {
+  const activityId = knownActivityId ?? await dictationActivityId(db);
+  // Tres lecturas independientes a la vez: cada viaje a la base cuesta lo mismo.
+  const [open, candidates, used] = await Promise.all([
+    db.dictationAttemptResult.findFirst({
+      where: { attempt: { userId, status: 'IN_PROGRESS', evaluation: { activityId } } }, include: { exercise: true },
+    }),
+    latestExercises(db),
+    db.dictationAttemptResult.findMany({ where: { attempt: { userId } }, select: { exercise: { select: { key: true } } }, orderBy: { startedAt: 'asc' } }),
+  ]);
   if (open) return { exercise: open.exercise, attemptId: open.attemptId };
-  const candidates = await latestExercises(db);
   if (candidates.length === 0) return null;
-  const used = await db.dictationAttemptResult.findMany({ where: { attempt: { userId } }, select: { exercise: { select: { key: true } } }, orderBy: { startedAt: 'asc' } });
   const lastUse = new Map<string, number>();
   used.forEach((row, index) => lastUse.set(row.exercise.key, index));
   const unused = candidates.filter((item) => !lastUse.has(item.key));
@@ -70,8 +74,8 @@ export async function nextExercise(userId: string, db: Tx | typeof prisma = pris
   return { exercise, attemptId: null };
 }
 
-export async function describeNext(userId: string) {
-  const next = await nextExercise(userId);
+export async function describeNext(userId: string, knownActivityId?: string) {
+  const next = await nextExercise(userId, prisma, knownActivityId);
   if (!next) return null;
   const { exercise } = next;
   return {

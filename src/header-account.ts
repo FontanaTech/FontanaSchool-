@@ -1,9 +1,6 @@
 // Nombre del asesor y «Cerrar sesión» dentro del encabezado vino de la inducción, la práctica y Ofimática.
 // Reemplaza la antigua barra azul superior.
-
-function escapeHtml(value: string): string {
-  return value.replace(/[&<>"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char]!);
-}
+import { escapar as escapeHtml } from './http';
 
 export function mountHeaderAccount(nombre: string, contexto: string): void {
   const header = document.querySelector<HTMLElement>('#app-content header:not(.auth-header)');

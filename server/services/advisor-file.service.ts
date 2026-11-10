@@ -6,17 +6,16 @@ import {
   activityProgressDetail, attemptsDetail, certificatesDetail, overridesDetail, sealsDetail, typingResultsDetail,
 } from '../repositories/advisor.repository.js';
 import { latestForEntities } from '../repositories/audit.repository.js';
-import { attemptsForUser } from '../repositories/progress.repository.js';
 import { findPublicById } from '../repositories/usuario.repository.js';
 import { advisorOffice } from './office-admin.service.js';
 import { loadSnapshot } from './progress.service.js';
 
 // Ficha completa del asesor para el panel administrativo.
 export async function getAdvisorFile(userId: string, now = new Date()) {
-  const user = await findPublicById(prisma, userId);
-  if (!user || user.rol !== Role.ADVISOR) throw new NotFoundError('Asesor no encontrado.', 'ADVISOR_NOT_FOUND');
-  const [snapshot, activities, attempts, seals, certificates, overrides, typing, profile, office, welcome] = await Promise.all([
-    loadSnapshot(prisma, userId, now, { sync: true }),
+  // Cada viaje a la base cuesta lo mismo: las lecturas simples van a la vez con el usuario. El estado de formación
+  // (que sincroniza progreso) y el resto solo se cargan para un asesor válido.
+  const [user, activities, attempts, seals, certificates, overrides, typing, profile, welcome, allAttempts] = await Promise.all([
+    findPublicById(prisma, userId),
     activityProgressDetail(userId),
     attemptsDetail(userId),
     sealsDetail(userId),
@@ -24,18 +23,23 @@ export async function getAdvisorFile(userId: string, now = new Date()) {
     overridesDetail(userId),
     typingResultsDetail(userId),
     prisma.advisorProfile.findUnique({ where: { userId } }),
-    advisorOffice(userId),
     prisma.usuario.findUnique({ where: { id: userId }, select: { fechaInduccionCompletada: true } }),
+    // Intentos usados por actividad (todas las versiones de la evaluación; los cancelados no cuentan). Se piden
+    // todos: solo se leen los de las actividades del catálogo visible.
+    prisma.attempt.findMany({ where: { userId }, select: { status: true, evaluation: { select: { activityId: true } } } }),
   ]);
-  // Intentos usados por actividad (todas las versiones de la evaluación; los cancelados no cuentan).
+  if (!user || user.rol !== Role.ADVISOR) throw new NotFoundError('Asesor no encontrado.', 'ADVISOR_NOT_FOUND');
+  const [snapshot, office, auditLog] = await Promise.all([
+    loadSnapshot(prisma, userId, now, { sync: true }),
+    advisorOffice(userId),
+    latestForEntities([userId, ...overrides.map((item) => item.id), ...certificates.map((item) => item.id)], 30),
+  ]);
   const attemptsUsed = new Map<string, number>();
-  const activityIds = snapshot.modules.flatMap((module) => module.activities.map((activity) => activity.id));
-  for (const attempt of await attemptsForUser(prisma, userId, activityIds)) {
+  for (const attempt of allAttempts) {
     if (attempt.status === 'CANCELLED') continue;
     const id = attempt.evaluation.activityId;
     attemptsUsed.set(id, (attemptsUsed.get(id) ?? 0) + 1);
   }
-  const auditLog = await latestForEntities([userId, ...overrides.map((item) => item.id), ...certificates.map((item) => item.id)], 30);
   return {
     // La bienvenida (historia, método y principios) está completa: al ingresar va directo al aula.
     welcomeCompleted: Boolean(welcome?.fechaInduccionCompletada),

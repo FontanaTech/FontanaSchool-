@@ -1,3 +1,4 @@
+import { escapar } from '../../http';
 import { fromDateKey } from './dates';
 
 const copFormatter = new Intl.NumberFormat('es-CO', {
@@ -48,17 +49,9 @@ export function formatDuration(totalSeconds: number): string {
   return h > 0 ? `${h}:${String(m).padStart(2, '0')}:${sec}` : `${String(m).padStart(2, '0')}:${sec}`;
 }
 
-const ESCAPES: Record<string, string> = {
-  '&': '&amp;',
-  '<': '&lt;',
-  '>': '&gt;',
-  '"': '&quot;',
-  "'": '&#39;',
-};
-
 /** Escapa texto para insertarlo en plantillas HTML. */
 export function esc(value: unknown): string {
-  return String(value ?? '').replace(/[&<>"']/g, (ch) => ESCAPES[ch] ?? ch);
+  return escapar(String(value ?? ''));
 }
 
 export function pluralize(count: number, singular: string, plural: string): string {

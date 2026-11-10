@@ -1,6 +1,7 @@
 import { createSpeaker, type SpeakerState } from './speaker';
 import { PRINCIPLES } from './principles';
 import { createTutor } from './tutor';
+import { escapar as escape } from '../http';
 
 // Pestaña «Principios de trabajo»: cinco opciones. Al elegir una, el tutor la explica con voz y mueve la boca con ella.
 // El texto completo de lo que dice el tutor siempre está visible (HTML normal); el personaje acompaña, no reemplaza.
@@ -15,8 +16,6 @@ export type PrinciplesPanel = {
   hide(): void;   // la pestaña se oculta: la voz se detiene
   destroy(): void;
 };
-
-const escape = (value: string): string => value.replace(/[&<>"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char]!);
 
 const STATUS: Record<SpeakerState, string> = {
   idle: 'La explicación se reproduce automáticamente. Si no comienza, pulsa «Escuchar».',

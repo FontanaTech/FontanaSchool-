@@ -259,10 +259,11 @@ export function practiceTexts(): readonly string[] {
 
 // ¿Tiene una práctica pendiente? Lo usa el estado del módulo.
 export async function practicePending(userId: string, activityId: string): Promise<boolean> {
-  const failed = await prisma.attempt.findFirst({
-    where: { userId, status: 'FAILED', evaluation: { activityId } }, orderBy: { submittedAt: 'desc' }, select: { submittedAt: true },
-  });
+  // Las dos lecturas no dependen entre sí: se piden a la vez.
+  const [failed, progress] = await Promise.all([
+    prisma.attempt.findFirst({ where: { userId, status: 'FAILED', evaluation: { activityId } }, orderBy: { submittedAt: 'desc' }, select: { submittedAt: true } }),
+    prisma.userActivityProgress.findUnique({ where: { userId_activityId: { userId, activityId } }, select: { lastPracticeAt: true } }),
+  ]);
   if (!failed?.submittedAt) return false;
-  const progress = await prisma.userActivityProgress.findUnique({ where: { userId_activityId: { userId, activityId } }, select: { lastPracticeAt: true } });
   return !progress?.lastPracticeAt || progress.lastPracticeAt < failed.submittedAt;
 }

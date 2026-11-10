@@ -1,5 +1,5 @@
 import type { Db } from '../config/prisma.js';
-import { gradeFinalExam, isLetter, type OptionLetter } from '../domain/final-exam.js';
+import { findQuestion, gradeFinalExam, isLetter, type OptionLetter } from '../domain/final-exam.js';
 import { exerciseRules } from '../domain/tipifica/exercises.js';
 import { readObjectionsPayload, type ObjectionsGrade } from '../domain/objections-expert.js';
 import { OBJECTIONS_ATTEMPT_PREFIX, OBJECTIONS_SLUG, OBJECTIONS_VERSION } from '../domain/objections.js';
@@ -35,15 +35,40 @@ function labelChecks(exerciseKey: string | null, checks: TypificationCheck[]): T
 
 export async function attemptResults(db: Db, attemptIds: string[], minimumScores = new Map<string, number>()): Promise<Map<string, AttemptResult>> {
   if (!attemptIds.length) return new Map();
-  const attempts = await db.attempt.findMany({
-    where: { id: { in: attemptIds } },
-    include: {
-      typificationResults: { orderBy: { createdAt: 'desc' }, take: 1 },
-      answers: { orderBy: { position: 'asc' }, select: { questionId: true, optionId: true, position: true } },
-      evaluation: { select: { minimumScore: true, questionCount: true, activity: { select: { type: true, module: { select: { slug: true } } } } } },
-    },
+  // Prisma carga cada relación anidada con una consulta aparte y en serie (intento → evaluación → actividad →
+  // módulo, más resultados y respuestas: siete viajes a la base). Aquí todo se pide a la vez a partir de los ids.
+  const [attempts, evaluations, activities, modules, typifications, answers] = await Promise.all([
+    db.attempt.findMany({
+      where: { id: { in: attemptIds } },
+      select: { id: true, userId: true, number: true, status: true, score: true, startedAt: true, submittedAt: true, overrideId: true, evaluationId: true },
+    }),
+    db.evaluation.findMany({ where: { attempts: { some: { id: { in: attemptIds } } } }, select: { id: true, activityId: true, minimumScore: true, questionCount: true } }),
+    db.activity.findMany({ where: { evaluations: { some: { attempts: { some: { id: { in: attemptIds } } } } } }, select: { id: true, moduleId: true, type: true } }),
+    db.trainingModule.findMany({ where: { activities: { some: { evaluations: { some: { attempts: { some: { id: { in: attemptIds } } } } } } } }, select: { id: true, slug: true } }),
+    db.typificationResult.findMany({
+      where: { attemptId: { in: attemptIds } }, orderBy: { createdAt: 'desc' },
+      select: { attemptId: true, exerciseKey: true, metCount: true, unmetCount: true, checks: true, fields: true, scenarioVersion: true, rulesVersion: true },
+    }),
+    db.attemptAnswer.findMany({ where: { attemptId: { in: attemptIds } }, orderBy: { position: 'asc' }, select: { attemptId: true, questionId: true, optionId: true } }),
+  ]);
+  const evaluationById = new Map(evaluations.map((row) => [row.id, row]));
+  const activityById = new Map(activities.map((row) => [row.id, row]));
+  const moduleById = new Map(modules.map((row) => [row.id, row]));
+  // Ordenados del más reciente al más antiguo: el primero de cada intento es su último resultado.
+  const typificationOf = new Map<string, (typeof typifications)[number]>();
+  for (const row of typifications) if (!typificationOf.has(row.attemptId)) typificationOf.set(row.attemptId, row);
+  const answersOf = new Map<string, typeof answers>();
+  for (const row of answers) answersOf.set(row.attemptId, [...answersOf.get(row.attemptId) ?? [], row]);
+  const contextOf = (attempt: (typeof attempts)[number]) => {
+    const evaluation = evaluationById.get(attempt.evaluationId);
+    const activity = evaluation ? activityById.get(evaluation.activityId) : undefined;
+    const module = activity ? moduleById.get(activity.moduleId) : undefined;
+    return { evaluation, activity, module };
+  };
+  const written = attempts.filter((a) => {
+    const { activity, module } = contextOf(a);
+    return a.submittedAt && activity?.type === 'SIMULATOR' && module?.slug === OBJECTIONS_SLUG;
   });
-  const written = attempts.filter(a => a.submittedAt && a.evaluation.activity.type === 'SIMULATOR' && a.evaluation.activity.module?.slug === OBJECTIONS_SLUG);
   const writtenIds = new Set(written.map(a => a.id));
   const savedReports = written.length ? await db.collectionsBlockProgress.findMany({ where: {
     userId: { in: [...new Set(written.map(a => a.userId))] }, module: { slug: OBJECTIONS_SLUG }, contentVersion: OBJECTIONS_VERSION,
@@ -51,7 +76,9 @@ export async function attemptResults(db: Db, attemptIds: string[], minimumScores
   }, select: { answers: true } }) : [];
   const reports = new Map(savedReports.map(r => readObjectionsPayload(r.answers)).filter(p => p && writtenIds.has(p.attemptId) && p.result).map(p => [p!.attemptId, p!.result!]));
   return new Map(attempts.map((attempt) => {
-    const typification = attempt.typificationResults[0];
+    const typification = typificationOf.get(attempt.id);
+    const { evaluation } = contextOf(attempt);
+    const attemptAnswers = answersOf.get(attempt.id) ?? [];
     const base: AttemptResult = {
       attemptId: attempt.id, number: attempt.number, status: attempt.status, score: attempt.score?.toFixed(2) ?? null,
       passed: attempt.status === 'PASSED', startedAt: attempt.startedAt.toISOString(), submittedAt: attempt.submittedAt?.toISOString() ?? null,
@@ -67,10 +94,10 @@ export async function attemptResults(db: Db, attemptIds: string[], minimumScores
         scenarioVersion: typification.scenarioVersion, rulesVersion: typification.rulesVersion,
       };
     }
-    // Examen general: preguntas con posición. Solo se califica un intento enviado.
-    if (attempt.evaluation.questionCount && attempt.submittedAt && attempt.answers.length) {
-      const answers: Record<string, OptionLetter | null> = Object.fromEntries(attempt.answers.map((row) => [row.questionId, isLetter(row.optionId) ? row.optionId : null]));
-      base.finalExam = gradeFinalExam(attempt.answers.map((row) => row.questionId), answers, minimumScores.get(attempt.id) ?? Number(attempt.evaluation.minimumScore));
+    // Examen general: preguntas con posición. Solo se califica un intento enviado y con alguna pregunta vigente.
+    if (evaluation?.questionCount && attempt.submittedAt && attemptAnswers.some((row) => findQuestion(row.questionId))) {
+      const selected: Record<string, OptionLetter | null> = Object.fromEntries(attemptAnswers.map((row) => [row.questionId, isLetter(row.optionId) ? row.optionId : null]));
+      base.finalExam = gradeFinalExam(attemptAnswers.map((row) => row.questionId), selected, minimumScores.get(attempt.id) ?? Number(evaluation.minimumScore));
     }
     return [attempt.id, base];
   }));

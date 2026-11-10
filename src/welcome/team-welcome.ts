@@ -12,7 +12,7 @@ const MOMENTS = [
 ] as const;
 
 const picture = (name: string, alt: string, extra = ''): string =>
-  `<img src="/imagenes/${name}.png" alt="${escapar(alt)}" width="1086" height="1448" decoding="async"${extra}>`;
+  `<img src="/imagenes/${name}.webp" alt="${escapar(alt)}" width="1086" height="1448" decoding="async"${extra}>`;
 
 export function mountTeamWelcome(container: HTMLElement, { certificateHref = '/induccion/certificado' }: Options): void {
   container.innerHTML = `<section class="team-welcome" aria-labelledby="team-welcome-title">
@@ -30,7 +30,7 @@ export function mountTeamWelcome(container: HTMLElement, { certificateHref = '/i
           <a class="team-welcome-primary" href="${escapar(certificateHref)}">Ver mi certificado →</a>
         </div>
       </div>
-      <figure class="team-welcome-hero-image"><img src="/imagenes/bienvenida-equipo-samuel.png" alt="Equipo de Fontana durante una jornada de trabajo" width="768" height="1024" decoding="async"></figure>
+      <figure class="team-welcome-hero-image"><img src="/imagenes/bienvenida-equipo-samuel.webp" alt="Equipo de Fontana durante una jornada de trabajo" width="768" height="1024" decoding="async"></figure>
     </div>
     <ul class="team-welcome-moments">
       ${MOMENTS.map((moment) => `<li><figure>${picture(moment.image, moment.title, ' loading="lazy"')}</figure><div><h2>${escapar(moment.title)}</h2><p>${escapar(moment.text)}</p></div></li>`).join('')}

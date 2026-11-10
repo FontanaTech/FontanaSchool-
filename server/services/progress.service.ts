@@ -225,10 +225,10 @@ export async function getAccessibleModule(userId: string, slug: string, options:
 }
 
 export async function getAdvisorSummary(userId: string) {
-  const snapshot = await loadSnapshot(prisma, userId);
+  // El estado de formación y los sellos no dependen entre sí: se piden a la vez.
+  const [snapshot, seals] = await Promise.all([loadSnapshot(prisma, userId), activeSealsForUser(prisma, userId)]);
   const learning = snapshot.views.filter((view) => view.slug !== CERTIFICATE_MODULE_SLUG && view.catalogStatus === 'ACTIVE');
   const total = learning.reduce((sum, view) => sum.add(view.progressPercent), new Prisma.Decimal(0));
-  const seals = await activeSealsForUser(prisma, userId);
   const last = snapshot.views.map((view) => view.lastActivityAt).filter((value): value is string => Boolean(value)).sort().at(-1) ?? null;
   return {
     overallPercent: learning.length ? total.div(learning.length).toDecimalPlaces(2).toFixed(2) : '0.00',

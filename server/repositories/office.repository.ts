@@ -47,14 +47,15 @@ export type OfficeActivities = {
 
 // Actividades del módulo por sección (la orden fija la migración). Las archivadas no aparecen.
 export async function officeActivities(db: Db = prisma): Promise<OfficeActivities | null> {
-  const module = await db.trainingModule.findUnique({
-    where: { slug: OFFICE_MODULE_SLUG },
-    include: { activities: { where: { order: { in: Object.values(SECTION_ORDER) } } } },
-  });
+  // Módulo y actividades a la vez: una ida a la base en vez de dos en serie (Prisma carga cada relación aparte).
+  const [module, activities] = await Promise.all([
+    db.trainingModule.findUnique({ where: { slug: OFFICE_MODULE_SLUG }, select: { id: true, name: true } }),
+    db.activity.findMany({ where: { module: { slug: OFFICE_MODULE_SLUG }, order: { in: Object.values(SECTION_ORDER) } } }),
+  ]);
   if (!module) return null;
   const bySection = {} as OfficeActivities['bySection'];
   for (const section of OFFICE_SECTIONS) {
-    const activity = module.activities.find((item) => item.order === SECTION_ORDER[section]);
+    const activity = activities.find((item) => item.order === SECTION_ORDER[section]);
     bySection[section] = activity
       ? { id: activity.id, status: activity.status, type: activity.type, title: activity.title, isRequired: activity.isRequired, route: activity.route }
       : undefined;

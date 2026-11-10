@@ -103,10 +103,11 @@ export type FinalExamGrade = {
 
 // Calificación sobre 100 con dos decimales. Una pregunta sin responder cuenta como incorrecta.
 export function gradeFinalExam(questionIds: string[], answers: Record<string, OptionLetter | null>, minimumScore: number): FinalExamGrade {
-  const questions = questionIds.map((id) => {
+  // El banco cambia entre versiones (preguntas retiradas): un intento guardado con una pregunta que ya no existe se
+  // califica con las que siguen vigentes en vez de fallar.
+  const questions = questionIds.flatMap((id) => {
     const question = findQuestion(id);
-    if (!question) throw new Error(`Pregunta desconocida: ${id}`);
-    return question;
+    return question ? [question] : [];
   });
   if (!questions.length) throw new Error('El intento no tiene preguntas.');
   const each = 100 / questions.length;

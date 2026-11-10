@@ -13,10 +13,13 @@ const json = (value: unknown): Prisma.InputJsonValue => JSON.parse(JSON.stringif
 const keyFor = (number: number) => `${OBJECTIONS_ATTEMPT_PREFIX}${number}`;
 
 async function access(db: Db, userId: string) {
-  const user = await db.usuario.findUnique({ where: { id: userId }, select: { rol: true, estado: true, debeCompletarDatos: true } });
+  // El usuario (siempre un asesor: la ruta exige el rol) y su estado de formación se consultan a la vez.
+  const [user, snapshot] = await Promise.all([
+    db.usuario.findUnique({ where: { id: userId }, select: { rol: true, estado: true, debeCompletarDatos: true } }),
+    loadSnapshot(db, userId),
+  ]);
   if (!user || user.rol !== 'asesor' || user.estado !== 'activo') throw new ForbiddenError('Este módulo es para asesores activos.');
   if (user.debeCompletarDatos) throw new ForbiddenError('Completa tu perfil antes de continuar.', 'PROFILE_INCOMPLETE');
-  const snapshot = await loadSnapshot(db, userId);
   const view = snapshot.views.find(v => v.slug === OBJECTIONS_SLUG);
   if (!view) throw new NotFoundError('El módulo no está configurado.', 'MODULE_NOT_FOUND');
   if (!view.enabled && view.status !== 'PASSED') throw new ForbiddenError(view.blockedReason ?? 'Módulo no disponible.', 'MODULE_BLOCKED');

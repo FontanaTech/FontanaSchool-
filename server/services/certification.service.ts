@@ -89,11 +89,10 @@ export async function listCertifications(filter: { status?: CertificationStatus;
 // Expediente resumido para validar: perfil, módulos, sellos, resultados por actividad, tipificaciones, examen
 // diagnóstico y examen general, reactivaciones, decisiones y certificado.
 export async function certificationDossier(userId: string, db: Db = prisma) {
-  const user = await db.usuario.findUnique({ where: { id: userId }, select: { id: true, nombreCompleto: true, numeroDocumento: true, rol: true, tieneExperienciaCobranzasDigitales: true, fechaInduccionCompletada: true, fechaCreacion: true } });
-  if (!user || user.rol !== Role.ADVISOR) throw new NotFoundError('Asesor no encontrado.', 'ADVISOR_NOT_FOUND');
-  const snapshot = await loadSnapshot(db, userId);
-  const [requirements, seals, attempts, overrides, requests, decisions, certificate, summaries] = await Promise.all([
-    certificationRequirements(db, userId, snapshot),
+  // Cada viaje a la base cuesta lo mismo: las lecturas que no dependen del estado de formación van a la vez con el
+  // usuario. El estado (que puede inicializar progreso) solo se carga para un asesor válido.
+  const [user, seals, attempts, overrides, requests, decisions, certificate, summaries] = await Promise.all([
+    db.usuario.findUnique({ where: { id: userId }, select: { id: true, nombreCompleto: true, numeroDocumento: true, rol: true, tieneExperienciaCobranzasDigitales: true, fechaInduccionCompletada: true, fechaCreacion: true } }),
     db.seal.findMany({ where: { userId, status: 'ACTIVE' }, include: { module: { select: { slug: true, name: true } } }, orderBy: { issuedAt: 'asc' } }),
     db.attempt.findMany({ where: { userId, status: { not: 'CANCELLED' } }, orderBy: [{ startedAt: 'asc' }], select: { id: true, number: true, status: true, score: true, submittedAt: true, overrideId: true, evaluation: { select: { activityId: true } } } }),
     db.userActivityOverride.count({ where: { userId, action: { in: ['REACTIVATE', 'EXTRA_ATTEMPT'] } } }),
@@ -102,7 +101,11 @@ export async function certificationDossier(userId: string, db: Db = prisma) {
     db.certificate.findFirst({ where: { userId, status: 'ACTIVE' } }),
     db.trainingCompletionSummary.findMany({ where: { userId }, orderBy: { cycle: 'desc' } }),
   ]);
-  const results = await attemptResults(db, attempts.filter((attempt) => attempt.submittedAt).map((attempt) => attempt.id));
+  if (!user || user.rol !== Role.ADVISOR) throw new NotFoundError('Asesor no encontrado.', 'ADVISOR_NOT_FOUND');
+  const [{ snapshot, requirements }, results] = await Promise.all([
+    loadSnapshot(db, userId).then(async (loaded) => ({ snapshot: loaded, requirements: await certificationRequirements(db, userId, loaded) })),
+    attemptResults(db, attempts.filter((attempt) => attempt.submittedAt).map((attempt) => attempt.id)),
+  ]);
   const pending = new Set(requests.filter((request) => request.status === 'PENDING').map((request) => request.activityId));
   const activities = snapshot.modules
     .filter((module) => module.slug !== CERTIFICATE_MODULE_SLUG)

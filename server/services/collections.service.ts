@@ -22,11 +22,14 @@ const EXPERIENCED_BLOCK_PERCENT = 18;
 const DIAGNOSTIC_PERCENT = 10;
 
 async function access(db: Db, userId: string) {
-  const user = await db.usuario.findUnique({ where: { id: userId }, select: { rol: true, estado: true, debeCompletarDatos: true, tieneExperienciaCobranzasDigitales: true } });
+  // El usuario (siempre un asesor: la ruta exige el rol) y su estado de formación se consultan a la vez.
+  const [user, snapshot] = await Promise.all([
+    db.usuario.findUnique({ where: { id: userId }, select: { rol: true, estado: true, debeCompletarDatos: true, tieneExperienciaCobranzasDigitales: true } }),
+    loadSnapshot(db, userId),
+  ]);
   if (!user || user.rol !== 'asesor' || user.estado !== 'activo') throw new ForbiddenError('Este módulo es para asesores activos.');
   if (user.debeCompletarDatos) throw new ForbiddenError('Completa tu perfil antes de continuar.', 'PROFILE_INCOMPLETE');
   if (user.tieneExperienciaCobranzasDigitales === null) throw new ForbiddenError('Cuéntanos tu experiencia en cobranzas para definir tu camino en el módulo.', 'EXPERIENCE_REQUIRED');
-  const snapshot = await loadSnapshot(db, userId);
   const view = snapshot.views.find((item) => item.slug === COLLECTIONS_SLUG);
   if (!view) throw new NotFoundError('El módulo de inducción a las cobranzas no está configurado.', 'MODULE_NOT_FOUND');
   if (!view.enabled && view.status !== 'PASSED') throw new ForbiddenError(view.blockedReason ?? 'Módulo no disponible.', 'MODULE_BLOCKED');
@@ -89,11 +92,14 @@ async function finishModule(db: Db, userId: string, module: Access['module'], no
   if (!alreadyPassed) await completeModule(db, userId, module.id, undefined, now);
 }
 
-async function examState(db: Db, userId: string, context: Access, path: ReturnType<typeof pathOf>) {
+function pendingDiagnosticRequest(db: Db, userId: string, context: Access) {
+  return context.diagnostic ? db.reactivationRequest.findFirst({ where: { userId, activityId: context.diagnostic.id, status: 'PENDING' }, select: { id: true } }) : null;
+}
+
+function examState(context: Access, path: ReturnType<typeof pathOf>, pending: { id: string } | null) {
   const saved = path.exam?.answers as { version?: number; result?: ReturnType<typeof gradeExam> } | undefined;
   const lastResult = saved?.version === EXAM_CONTENT_VERSION ? saved.result ?? null : null;
   const draft = readExamDraft(path.draftRow?.answers);
-  const pending = context.diagnostic ? await db.reactivationRequest.findFirst({ where: { userId, activityId: context.diagnostic.id, status: 'PENDING' }, select: { id: true } }) : null;
   const status = evaluationStatusOf({ availability: context.diagnosticAvailability, lastAttemptFailed: lastResult ? !lastResult.passed : false, pendingRequest: Boolean(pending) });
   return {
     required: false, enabled: path.examEnabled, passed: Boolean(context.diagnosticAvailability?.passed || lastResult?.passed), presented: path.diagnosticPresented,
@@ -105,7 +111,8 @@ async function examState(db: Db, userId: string, context: Access, path: ReturnTy
 export async function collectionsState(userId: string) {
   const context = await access(prisma, userId);
   const { view, experienced, simulatorRoute } = context;
-  const rows = await progressRows(prisma, userId, view.moduleId);
+  // El avance de los bloques y la solicitud de reactivación pendiente no dependen entre sí: se piden a la vez.
+  const [rows, pendingRequest] = await Promise.all([progressRows(prisma, userId, view.moduleId), pendingDiagnosticRequest(prisma, userId, context)]);
   const path = pathOf(rows, context, view.status === 'PASSED' || view.hasSeal);
   const blocks = COLLECTIONS_BLOCKS.map((block, index) => {
     const row = rows.find((item) => item.blockKey === block.key);
@@ -127,7 +134,7 @@ export async function collectionsState(userId: string) {
   return { version: COLLECTIONS_VERSION, name: 'Inducción a las cobranzas', experienced, diagnosticFirst: path.theoryLocked, reviewMode: context.reviewMode,
     completedCount: path.completed.size, percent: path.percent, complete: path.complete, simulatorRoute,
     currentBlock: path.theoryLocked ? EXAM_KEY : pending?.key ?? COLLECTIONS_KEYS[0],
-    blocks, exam: await examState(prisma, userId, context, path) };
+    blocks, exam: examState(context, path, pendingRequest) };
 }
 
 function assertTheoryOpen(path: ReturnType<typeof pathOf>) {

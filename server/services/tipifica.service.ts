@@ -21,10 +21,13 @@ import { loadSnapshot, type TrainingSnapshot } from './progress.service.js';
 export const TIPIFICA_SLUG = 'tipificacion-llamadas';
 
 async function access(db: Db, userId: string) {
-  const user = await db.usuario.findUnique({ where: { id: userId }, select: { rol: true, estado: true, debeCompletarDatos: true } });
+  // El usuario (siempre un asesor: la ruta exige el rol) y su estado de formación se consultan a la vez.
+  const [user, snapshot] = await Promise.all([
+    db.usuario.findUnique({ where: { id: userId }, select: { rol: true, estado: true, debeCompletarDatos: true } }),
+    loadSnapshot(db, userId),
+  ]);
   if (!user || user.rol !== 'asesor' || user.estado !== 'activo') throw new ForbiddenError('Este módulo es para asesores activos.');
   if (user.debeCompletarDatos) throw new ForbiddenError('Completa tu perfil antes de continuar.', 'PROFILE_INCOMPLETE');
-  const snapshot = await loadSnapshot(db, userId);
   const view = snapshot.views.find((item) => item.slug === TIPIFICA_SLUG);
   if (!view) throw new NotFoundError('El módulo Tipifica no está configurado.', 'MODULE_NOT_FOUND');
   if (!view.enabled && view.status !== 'PASSED') throw new ForbiddenError(view.blockedReason ?? 'Módulo no disponible.', 'MODULE_BLOCKED');
