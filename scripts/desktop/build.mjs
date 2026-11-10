@@ -35,7 +35,9 @@ const git = (...parts) => execFileSync('git', parts, { cwd: root, encoding: 'utf
 step('Revisando el repositorio');
 const pkg = JSON.parse(readFileSync(path.join(root, 'package.json'), 'utf8'));
 const sha = git('rev-parse', 'HEAD');
-const branch = git('rev-parse', '--abbrev-ref', 'HEAD');
+const localBranch = git('rev-parse', '--abbrev-ref', 'HEAD');
+// En GitHub Actions el repositorio puede quedar en «HEAD» suelto: la rama la da el propio flujo.
+const branch = localBranch === 'HEAD' && process.env.GITHUB_REF_NAME ? process.env.GITHUB_REF_NAME : localBranch;
 const dirty = git('status', '--porcelain', '--untracked-files=no');
 if (publish && (branch !== 'main' || dirty)) {
   throw new Error(`Para publicar una actualización debes estar en main y sin cambios pendientes (rama actual: ${branch}${dirty ? ', con cambios sin commit' : ''}).`);
@@ -46,13 +48,17 @@ const tag = `desktop-${stamp}-${sha.slice(0, 7)}`;
 console.log(`  Versión ${pkg.version} · commit ${sha.slice(0, 7)} (${branch}) · ${tag}`);
 
 // Conexión a la base de datos para el instalador (solo variables del servidor; nunca PORT ni modo desarrollo).
-const envPath = path.join(root, '.env');
-if (!existsSync(envPath)) throw new Error('No existe el archivo .env con la conexión a la base de datos.');
+// Solo la necesita el instalador: la actualización publicada no la lleva (así puede compilarse en GitHub Actions).
 const KEEP = ['DATABASE_URL', 'DIRECT_URL', 'SESSION_SECRET', 'MEDIA_SIGNING_SECRET', 'TYPING_WEBHOOK_SECRET', 'APP_TIMEZONE', 'CERTIFICATES_ENABLED', 'STALLED_DAYS', 'OLLAMA_ENABLED', 'OLLAMA_URL', 'OLLAMA_MODEL'];
-const envLines = readFileSync(envPath, 'utf8').split(/\r?\n/).filter((line) => KEEP.includes(line.split('=')[0]?.trim()));
-const sessionSecret = envLines.find((line) => line.startsWith('SESSION_SECRET='))?.slice('SESSION_SECRET='.length).replace(/^["']|["']$/g, '') ?? '';
-if (sessionSecret.length < 32) throw new Error('SESSION_SECRET del .env debe tener al menos 32 caracteres para la aplicación instalada.');
-if (!envLines.some((line) => line.startsWith('DATABASE_URL='))) throw new Error('Falta DATABASE_URL en el .env.');
+let envLines = [];
+if (installer) {
+  const envPath = path.join(root, '.env');
+  if (!existsSync(envPath)) throw new Error('No existe el archivo .env con la conexión a la base de datos.');
+  envLines = readFileSync(envPath, 'utf8').split(/\r?\n/).filter((line) => KEEP.includes(line.split('=')[0]?.trim()));
+  const sessionSecret = envLines.find((line) => line.startsWith('SESSION_SECRET='))?.slice('SESSION_SECRET='.length).replace(/^["']|["']$/g, '') ?? '';
+  if (sessionSecret.length < 32) throw new Error('SESSION_SECRET del .env debe tener al menos 32 caracteres para la aplicación instalada.');
+  if (!envLines.some((line) => line.startsWith('DATABASE_URL='))) throw new Error('Falta DATABASE_URL en el .env.');
+}
 
 // ---------------------------------------------------------------------------------------------
 step('Compilando la interfaz (vite build)');
@@ -138,9 +144,13 @@ if (installer) {
 // ---------------------------------------------------------------------------------------------
 if (publish) {
   step('Publicando la actualización en GitHub');
-  // Usa la sesión de GitHub que ya tiene git en este equipo (Administrador de credenciales de Windows).
-  const credential = execFileSync('git', ['credential', 'fill'], { input: 'protocol=https\nhost=github.com\n\n', encoding: 'utf8', env: { ...process.env, GIT_TERMINAL_PROMPT: '0' } });
-  const token = /password=(.+)/.exec(credential)?.[1]?.trim();
+  // En GitHub Actions usa el token del flujo; en un equipo, la sesión de GitHub que ya tiene git
+  // (Administrador de credenciales de Windows).
+  let token = process.env.GITHUB_TOKEN?.trim();
+  if (!token) {
+    const credential = execFileSync('git', ['credential', 'fill'], { input: 'protocol=https\nhost=github.com\n\n', encoding: 'utf8', env: { ...process.env, GIT_TERMINAL_PROMPT: '0' } });
+    token = /password=(.+)/.exec(credential)?.[1]?.trim();
+  }
   if (!token) throw new Error('No se encontró la sesión de GitHub de git en este equipo.');
   const headers = { Authorization: `Bearer ${token}`, Accept: 'application/vnd.github+json', 'User-Agent': 'FontanaSchool-Build' };
   const subject = git('log', '-1', '--pretty=%s');
@@ -156,6 +166,21 @@ if (publish) {
   });
   if (!uploaded.ok) throw new Error(`GitHub no recibió el archivo (${uploaded.status}): ${await uploaded.text()}`);
   console.log(`\n✔ Actualización publicada: ${release.html_url}`);
+
+  // Conserva solo las últimas versiones de escritorio (cada push a main crea una).
+  const KEEP_RELEASES = 10;
+  const listed = await fetch(`https://api.github.com/repos/${REPO}/releases?per_page=100`, { headers });
+  if (listed.ok) {
+    const old = (await listed.json())
+      .filter((item) => String(item.tag_name).startsWith('desktop-'))
+      .sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at))
+      .slice(KEEP_RELEASES);
+    for (const item of old) {
+      await fetch(`https://api.github.com/repos/${REPO}/releases/${item.id}`, { method: 'DELETE', headers });
+      await fetch(`https://api.github.com/repos/${REPO}/git/refs/tags/${encodeURIComponent(item.tag_name)}`, { method: 'DELETE', headers });
+    }
+    if (old.length) console.log(`  Versiones antiguas borradas: ${old.map((item) => item.tag_name).join(', ')}`);
+  }
 }
 
 console.log(`\nArchivos de trabajo en ${work}`);

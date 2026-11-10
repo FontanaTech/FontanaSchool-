@@ -1,0 +1,60 @@
+# Publica la actualización de la aplicación de escritorio cada vez que se sube un commit a main.
+#
+# Compila la interfaz y el servidor en Windows y crea un release «desktop-…» con el archivo
+# fontana-runtime-….zip. Las aplicaciones instaladas lo traen con el botón «Buscar actualizaciones».
+# No usa la conexión a la base de datos: esa solo va dentro del instalador que se arma en el equipo.
+
+name: Actualización de escritorio
+
+on:
+  push:
+    branches: [main]
+    # Cambios que no afectan a la aplicación no generan versión.
+    paths-ignore:
+      - '**/*.md'
+      - '.vscode/**'
+      - '.github/ISSUE_TEMPLATE/**'
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+# Si se suben varios commits seguidos, se publican en orden (uno a la vez).
+concurrency:
+  group: desktop-release
+  cancel-in-progress: false
+
+jobs:
+  publicar:
+    name: Compilar y publicar
+    runs-on: windows-latest
+    timeout-minutes: 30
+    env:
+      # El ejecutable de Electron no hace falta para compilar la actualización.
+      ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
+    steps:
+      - name: Descargar el código
+        uses: actions/checkout@v4
+
+      - name: Preparar Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Instalar dependencias
+        run: npm ci
+
+      - name: Generar el cliente de la base de datos
+        run: npx prisma generate
+
+      - name: Revisar tipos
+        run: npm run check
+
+      - name: Pruebas unitarias
+        run: npm run test:unit
+
+      - name: Compilar y publicar la actualización
+        run: npm run desktop:actualizacion
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

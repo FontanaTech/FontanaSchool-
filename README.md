@@ -331,6 +331,8 @@ El instalador `.exe` incluye la aplicación compilada, los audios del dictado (`
 - `npm run desktop:publicar`: lo mismo y además publica la versión compilada (sin la conexión) como release `desktop-…` en GitHub. Solo desde `main` y sin cambios pendientes. Usa la sesión de GitHub que ya tiene git en el equipo.
 - `npm run desktop:actualizacion`: solo publica la actualización, sin armar el instalador.
 
+Cada commit que llega a `main` se publica solo: el flujo de GitHub Actions `.github/workflows/desktop-release.yml` revisa tipos, corre las pruebas unitarias y crea el release `desktop-…` (conserva los 10 más recientes). Los comandos de publicación manual quedan para casos especiales.
+
 En la aplicación instalada, el botón **«Buscar actualizaciones»** del inicio de sesión consulta el último release `desktop-…`, lo descarga y reinicia la aplicación con esa versión. Si el cambio toca la aplicación de escritorio en sí (`electron/`), hay que reinstalar con un instalador nuevo.
 
 El servidor corre dentro de la aplicación en `http://localhost:3087`. Los archivos de compilación quedan en `%TEMP%\fontana-desktop-build`.
