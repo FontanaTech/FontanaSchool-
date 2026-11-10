@@ -61,6 +61,43 @@ function removeUnusedRuntimes(keepDir) {
   }
 }
 
+// Marca que deja la actualización para que la nueva instancia confirme «Actualización correcta» una sola vez.
+const updatedMarker = () => path.join(updatesDir(), 'updated.json');
+let justUpdated = null;
+
+function readUpdatedMarker() {
+  try {
+    const marker = JSON.parse(fs.readFileSync(updatedMarker(), 'utf8'));
+    fs.rmSync(updatedMarker(), { force: true });
+    return marker;
+  } catch { return null; }
+}
+
+// Cierra el servidor y espera a que termine (máximo 3 s) para dejar libre el puerto a la siguiente instancia.
+function stopServer() {
+  return new Promise((resolve) => {
+    if (!server) { resolve(); return; }
+    const timer = setTimeout(resolve, 3000);
+    server.once('exit', () => { clearTimeout(timer); resolve(); });
+    server.kill();
+  });
+}
+
+async function restartApp() {
+  await stopServer();
+  app.relaunch();
+  app.exit(0);
+}
+
+// Tras una actualización, la instancia anterior puede tardar un instante en soltar el puerto.
+async function waitForPortFree(timeoutMs = 15_000) {
+  const started = Date.now();
+  while (Date.now() - started < timeoutMs) {
+    try { await net.fetch(`http://localhost:${PORT}/api/health`, { signal: AbortSignal.timeout(1000) }); } catch { return; }
+    await new Promise((resolve) => setTimeout(resolve, 500));
+  }
+}
+
 function parseEnv(text) {
   const out = {};
   for (const raw of text.split(/\r?\n/)) {
@@ -135,7 +172,10 @@ async function createWindow() {
     return;
   }
   removeUnusedRuntimes(runtime.dir);
+  justUpdated = readUpdatedMarker();
+  if (justUpdated && justUpdated.tag !== runtime.manifest.tag) justUpdated = null;
   try {
+    await waitForPortFree();
     startServer(runtime);
     await waitForServer();
     await mainWindow.loadURL(`http://localhost:${PORT}/login`);
@@ -161,7 +201,10 @@ async function latestRelease() {
 
 ipcMain.handle('desktop:info', () => {
   const runtime = activeRuntime();
-  return { appVersion: app.getVersion(), runtime: runtime.manifest };
+  // La confirmación de la actualización se entrega una sola vez.
+  const updated = justUpdated;
+  justUpdated = null;
+  return { appVersion: app.getVersion(), runtime: runtime.manifest, updated };
 });
 
 ipcMain.handle('desktop:check', async () => {
@@ -208,9 +251,10 @@ ipcMain.handle('desktop:update', async (event) => {
   fs.rmSync(zip, { force: true });
   if (!readManifest(target) || !fs.existsSync(path.join(target, 'server', 'server.mjs'))) throw new Error('La actualización descargada está incompleta.');
   fs.writeFileSync(pointerFile(), JSON.stringify({ folder, installedAt: new Date().toISOString() }));
+  fs.writeFileSync(updatedMarker(), JSON.stringify({ tag: release.tag, at: new Date().toISOString() }));
   // La versión anterior (la que está corriendo ahora) se borra en el próximo arranque: ver removeUnusedRuntimes.
-  send('Reiniciando…', 100);
-  setTimeout(() => { app.relaunch(); app.exit(0); }, 800);
+  send('Actualización correcta. Reiniciando la aplicación…', 100);
+  setTimeout(() => { void restartApp(); }, 800);
   return { ok: true, tag: release.tag };
 });
 
