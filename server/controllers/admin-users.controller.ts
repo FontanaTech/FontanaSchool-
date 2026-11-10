@@ -3,6 +3,7 @@ import { Role, UserStatus } from '../domain/enums.js';
 import { validBody, validParams, validQuery } from '../middleware/validate.js';
 import type { ActionContext } from '../services/audit.service.js';
 import * as courseResetService from '../services/course-reset.service.js';
+import { crearSesion } from '../services/session.service.js';
 import * as testProgressService from '../services/test-progress.service.js';
 import * as userService from '../services/user.service.js';
 import type { ChangeStatusBody, CreateUserBody, ListUsersQuery, ResetPasswordBody, SetPasswordBody, UpdateUserBody } from '../validators/user.validator.js';
@@ -40,7 +41,10 @@ export async function resetPassword(request: Request, response: Response): Promi
 export async function setPassword(request: Request, response: Response): Promise<void> {
   const { id } = validParams<{ id: string }>(request);
   const body = validBody<SetPasswordBody>(request);
-  response.json({ data: await userService.setPassword(id, body.password, body.reason, actionContext(request)) });
+  const { user, version } = await userService.setPassword(id, body.password, body.reason, actionContext(request));
+  // Quien cambia su propia contraseña conserva la sesión actual: la cookie se vuelve a firmar con la versión nueva.
+  if (id === request.usuario!.id) crearSesion(response, id, version);
+  response.json({ data: user });
 }
 
 // Cuenta de pruebas: marca un módulo como completado o lo vacía.

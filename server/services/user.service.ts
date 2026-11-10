@@ -27,13 +27,17 @@ function duplicate(error: unknown): never {
 }
 
 export async function createUser(input: CreateUserBody, context: ActionContext): Promise<UsuarioPublico> {
-  const passwordHash = await bcrypt.hash(input.password, BCRYPT_ROUNDS);
+  const isAdvisor = input.rol === Role.ADVISOR;
+  if (!isAdvisor && !input.nombreCompleto) throw new ValidationError('El nombre es obligatorio para un administrador.', { nombreCompleto: 'Escribe el nombre del administrador.' });
+  if (!isAdvisor && !input.password) throw new ValidationError('La contraseña es obligatoria para un administrador.', { password: 'Define la contraseña del administrador.' });
+  // Los asesores entran solo con su documento: no usan contraseña (se guarda una aleatoria que nadie conoce) y
+  // completan su nombre y datos al ingresar; mientras tanto se identifican por el documento.
+  const passwordHash = await bcrypt.hash(input.password ?? randomBytes(24).toString('base64url'), BCRYPT_ROUNDS);
   try {
     return await prisma.$transaction(async (tx) => {
-      const isAdvisor = input.rol === Role.ADVISOR;
       const user = await tx.usuario.create({
         data: {
-          nombreCompleto: input.nombreCompleto,
+          nombreCompleto: input.nombreCompleto ?? `Asesor ${input.numeroDocumento}`,
           numeroDocumento: input.numeroDocumento,
           tipoDocumento: input.tipoDocumento ?? 'CC',
           correo: input.correo ?? null,
@@ -132,23 +136,29 @@ export async function resetPassword(id: string, reason: string | undefined, cont
   return { user, temporaryPassword };
 }
 
-// El administrador fija la contraseña de un asesor. Cierra sus sesiones y le exige cambiarla al ingresar.
-// El valor nunca se audita.
-export async function setPassword(id: string, password: string, reason: string | undefined, context: ActionContext): Promise<UsuarioPublico> {
-  if (id === context.actorUserId) throw new ForbiddenError('Para cambiar tu propia contraseña usa otra vía.', 'SELF_PASSWORD_RESET');
+// El administrador fija la contraseña de un asesor, de otro administrador o la suya. Las sesiones abiertas del
+// usuario se cierran (la versión de sesión cambia); quien cambia la propia conserva la sesión actual porque el
+// controlador vuelve a firmar su cookie con la versión nueva. El valor nunca se audita.
+export async function setPassword(id: string, password: string, reason: string | undefined, context: ActionContext): Promise<{ user: UsuarioPublico; version: number }> {
+  const self = id === context.actorUserId;
   const passwordHash = await bcrypt.hash(password, BCRYPT_ROUNDS);
   return prisma.$transaction(async (tx) => {
     await lockUser(tx, id);
     const before = await findPublicById(tx, id);
     if (!before) throw new NotFoundError('Usuario no encontrado.', 'USER_NOT_FOUND');
-    if (before.rol !== Role.ADVISOR) throw new ValidationError('Solo se puede cambiar la contraseña de un asesor.', { id: 'El usuario no es asesor.' }, 'NOT_ADVISOR');
+    // Solo los asesores tienen flujo de cambio obligatorio al ingresar; un administrador recibe la contraseña definitiva.
+    const debeCambiarPassword = !self && before.rol === Role.ADVISOR;
     const after = await tx.usuario.update({
       where: { id },
-      data: { passwordHash, debeCambiarPassword: true, versionSesion: { increment: 1 } },
-      select: usuarioPublicoSelect,
+      data: { passwordHash, debeCambiarPassword, versionSesion: { increment: 1 } },
+      select: { ...usuarioPublicoSelect, versionSesion: true },
     });
-    await audit(tx, context, { action: 'USER_PASSWORD_SET', entityType: 'Usuario', entityId: id, before: { debeCambiarPassword: before.debeCambiarPassword }, after: { debeCambiarPassword: true }, reason });
-    return after;
+    const { versionSesion, ...user } = after;
+    await audit(tx, context, {
+      action: self ? 'OWN_PASSWORD_CHANGED' : 'USER_PASSWORD_SET', entityType: 'Usuario', entityId: id,
+      before: { debeCambiarPassword: before.debeCambiarPassword }, after: { debeCambiarPassword }, reason,
+    });
+    return { user: user as UsuarioPublico, version: versionSesion };
   });
 }
 

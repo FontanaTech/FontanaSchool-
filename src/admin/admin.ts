@@ -111,6 +111,11 @@ async function run(action: () => Promise<unknown>, success: string, after?: () =
 // Un solo diálogo para todo lo del usuario: datos, estado y contraseña (esta última solo en asesores).
 async function editUser(user: Usuario, after: () => unknown): Promise<void> {
   const isAdvisor = user.rol === 'asesor';
+  // Cambiar la propia contraseña conserva la sesión actual (el servidor vuelve a firmar la cookie).
+  const self = (await api<{ usuario: { id: string } }>('/auth/me')).usuario.id === user.id;
+  const passwordHint = self ? 'Tu sesión actual se mantiene; las demás sesiones abiertas se cierran.'
+    : isAdvisor ? 'El asesor deberá cambiarla en su próximo ingreso y sus sesiones abiertas se cerrarán.'
+      : 'Sus sesiones abiertas se cerrarán y entrará con la contraseña nueva.';
   const data = await askForm(`Editar a ${user.nombreCompleto}`, `
     <fieldset class="dialog-group"><legend>Datos</legend>
       <label>Nombre completo<input name="nombreCompleto" required maxlength="150" value="${escapar(user.nombreCompleto)}"></label>
@@ -122,13 +127,18 @@ async function editUser(user: Usuario, after: () => unknown): Promise<void> {
     <fieldset class="dialog-group"><legend>Acceso</legend>
       <label>Estado de la cuenta<select name="estado">${['activo', 'inactivo', 'bloqueado'].map((s) => `<option value="${s}" ${s === user.estado ? 'selected' : ''}>${s.charAt(0).toUpperCase() + s.slice(1)}</option>`).join('')}</select></label>
       <small class="dialog-hint">Desactivar o bloquear cierra de inmediato las sesiones abiertas. El historial se conserva.</small>
-      ${isAdvisor ? `<label>Nueva contraseña <small>Déjala vacía para no cambiarla</small><input name="password" type="password" minlength="10" maxlength="72" autocomplete="new-password"></label>
-      <small class="dialog-hint">El asesor deberá cambiarla en su próximo ingreso y sus sesiones abiertas se cerrarán.</small>` : ''}
+      <label>Nueva contraseña <small>Déjala vacía para no cambiarla</small><input name="password" type="password" minlength="10" maxlength="72" autocomplete="new-password"></label>
+      <label>Confirmar la contraseña nueva<input name="passwordConfirm" type="password" maxlength="72" autocomplete="new-password"></label>
+      <small class="dialog-hint">${passwordHint}</small>
     </fieldset>
-    <label>Motivo <small>Obligatorio (mínimo 10 caracteres) si cambias el estado o la contraseña</small><textarea name="reason" maxlength="500" rows="2"></textarea></label>`, {
+    <label>Motivo <small>Obligatorio (mínimo 10 caracteres) si cambias el estado o la contraseña de otro usuario</small><textarea name="reason" maxlength="500" rows="2"></textarea></label>`, {
     reason: false,
     submit: 'Guardar cambios',
-    validate: (form) => ((form.estado !== user.estado || form.password) && form.reason.trim().length < 10 ? 'Escribe un motivo de al menos 10 caracteres para cambiar el estado o la contraseña.' : null),
+    validate: (form) => {
+      if (form.password && form.password !== form.passwordConfirm) return 'Las contraseñas no coinciden.';
+      const needsReason = form.estado !== user.estado || (form.password && !self);
+      return needsReason && form.reason.trim().length < 10 ? 'Escribe un motivo de al menos 10 caracteres para cambiar el estado o la contraseña de otro usuario.' : null;
+    },
   });
   if (!data) return;
   const reason = data.reason.trim();
@@ -139,7 +149,7 @@ async function editUser(user: Usuario, after: () => unknown): Promise<void> {
     if (data.rol !== user.rol) body.rol = data.rol;
     await api(`/admin/users/${user.id}`, { method: 'PATCH', body: JSON.stringify(body) });
     if (data.estado !== user.estado) await api(`/admin/users/${user.id}/status`, { method: 'PATCH', body: JSON.stringify({ estado: data.estado, reason }) });
-    if (data.password) await api(`/admin/users/${user.id}/password`, { method: 'PUT', body: JSON.stringify({ password: data.password, reason }) });
+    if (data.password) await api(`/admin/users/${user.id}/password`, { method: 'PUT', body: JSON.stringify(reason ? { password: data.password, reason } : { password: data.password }) });
     busy('Actualizando la información…');
     await after();
     feedback(data.password ? 'Cambios guardados y contraseña actualizada.' : 'Cambios guardados.');
@@ -154,12 +164,12 @@ const USER_COLUMNS = [
 
 async function advisorsSection(view: HTMLElement): Promise<void> {
   view.innerHTML = `
-    <section class="auth-card admin-card"><div class="section-title"><div><h2>Registrar usuario</h2><p>Los asesores completan su perfil al ingresar.</p></div></div>
+    <section class="auth-card admin-card"><div class="section-title"><div><h2>Registrar usuario</h2><p>Un asesor se crea solo con su número de documento: entra con él y completa su nombre y sus datos al ingresar. Un administrador necesita nombre y contraseña.</p></div></div>
       <form id="create-form" class="admin-form">
-        <label>Nombre completo<input name="nombreCompleto" required maxlength="150" autocomplete="name"></label>
         <label>Número de documento<input name="numeroDocumento" required maxlength="30" inputmode="numeric"></label>
-        <label>Contraseña temporal<input name="password" type="password" required minlength="10" maxlength="72" autocomplete="new-password"></label>
         <label>Rol<select name="rol"><option value="asesor">Asesor</option><option value="administrador">Administrador</option></select></label>
+        <label>Nombre completo <small data-name-hint>Opcional: el asesor lo completa al ingresar</small><input name="nombreCompleto" maxlength="150" autocomplete="name"></label>
+        <label data-password-field>Contraseña del administrador<input name="password" type="password" minlength="10" maxlength="72" autocomplete="new-password"></label>
         <button class="primary-action">Crear usuario</button>
       </form>
     </section>
@@ -212,10 +222,28 @@ async function advisorsSection(view: HTMLElement): Promise<void> {
     else if (button.dataset.action === 'reset-course') await resetCourse(user, () => load(true));
   });
 
-  view.querySelector<HTMLFormElement>('#create-form')!.addEventListener('submit', async (event) => {
+  // El nombre y la contraseña solo se piden para un administrador; un asesor se crea con su documento.
+  const createForm = view.querySelector<HTMLFormElement>('#create-form')!;
+  const roleSelect = createForm.querySelector<HTMLSelectElement>('select[name="rol"]')!;
+  const nameInput = createForm.querySelector<HTMLInputElement>('input[name="nombreCompleto"]')!;
+  const nameHint = createForm.querySelector<HTMLElement>('[data-name-hint]')!;
+  const passwordField = createForm.querySelector<HTMLElement>('[data-password-field]')!;
+  const passwordInput = passwordField.querySelector<HTMLInputElement>('input')!;
+  const applyRole = (): void => {
+    const admin = roleSelect.value === 'administrador';
+    nameInput.required = admin;
+    nameHint.textContent = admin ? 'Obligatorio para un administrador' : 'Opcional: el asesor lo completa al ingresar';
+    passwordField.style.display = admin ? '' : 'none';
+    passwordInput.required = admin;
+    if (!admin) passwordInput.value = '';
+  };
+  roleSelect.addEventListener('change', applyRole);
+  applyRole();
+  createForm.addEventListener('submit', async (event) => {
     event.preventDefault();
-    const form = event.currentTarget as HTMLFormElement;
-    await run(() => api('/admin/users', { method: 'POST', body: JSON.stringify(Object.fromEntries(new FormData(form))) }), 'Usuario creado y activo.', () => { form.reset(); return load(true); });
+    const body = Object.fromEntries([...new FormData(createForm)].filter(([, value]) => String(value).trim() !== ''));
+    const advisor = body.rol !== 'administrador';
+    await run(() => api('/admin/users', { method: 'POST', body: JSON.stringify(body) }), advisor ? 'Asesor creado y activo: entra con su número de documento.' : 'Administrador creado y activo.', () => { createForm.reset(); applyRole(); return load(true); });
   });
   view.querySelector('thead')!.addEventListener('click', (event) => {
     const button = (event.target as HTMLElement).closest<HTMLButtonElement>('button[data-sort]');
