@@ -1,0 +1,14 @@
+/* Panel «Recursos humanos»: asesores con datos completos, selección y exportación a Excel. */
+.hr-summary { margin: -6px 0 14px; color: #657184; font-size: 13px; }
+.hr-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 18px; margin: 0 0 12px; }
+.hr-toolbar label { display: inline-flex; align-items: center; gap: 7px; color: #334155; font-size: 13px; font-weight: 600; cursor: pointer; }
+.hr-toolbar .hr-count { color: #657184; font-size: 13px; }
+.hr-toolbar .hr-export { margin-left: auto; }
+.hr-toolbar .hr-export:disabled { opacity: .55; cursor: not-allowed; }
+.hr-table { overflow-x: auto; }
+.hr-table table { min-width: 1480px; }
+.hr-table th, .hr-table td { white-space: nowrap; vertical-align: top; }
+.hr-table td small { display: block; color: #657184; }
+.hr-table th:first-child, .hr-table td:first-child { position: sticky; left: 0; z-index: 1; width: 34px; background: #fff; }
+.hr-table tr.is-selected td { background: #fff7e0; }
+.hr-table input[type="checkbox"] { width: 17px; height: 17px; margin: 0; accent-color: #8b1538; cursor: pointer; }

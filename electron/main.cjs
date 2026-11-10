@@ -9,7 +9,7 @@
 // El botón «Buscar actualizaciones» del inicio de sesión descarga la última versión publicada desde la rama main en
 // GitHub (una versión compilada, sin la conexión a la base) y la deja en la carpeta del usuario; al reiniciar se usa.
 
-const { app, BrowserWindow, ipcMain, net, shell, utilityProcess, dialog } = require('electron');
+const { app, BrowserWindow, ipcMain, net, session, shell, utilityProcess, dialog } = require('electron');
 const fs = require('node:fs');
 const path = require('node:path');
 const os = require('node:os');
@@ -262,7 +262,21 @@ app.on('second-instance', () => {
   if (mainWindow) { if (mainWindow.isMinimized()) mainWindow.restore(); mainWindow.focus(); }
 });
 
-app.whenReady().then(createWindow).catch((error) => {
+// Las descargas (por ejemplo, el Excel de Recursos humanos) van directo a la carpeta Descargas del equipo, sin
+// preguntar dónde guardarlas. Si ya existe un archivo con ese nombre, se numera.
+function routeDownloadsToFolder() {
+  session.defaultSession.on('will-download', (_event, item) => {
+    const folder = app.getPath('downloads');
+    const name = item.getFilename() || 'descarga';
+    const extension = path.extname(name);
+    const stem = path.basename(name, extension);
+    let target = path.join(folder, name);
+    for (let n = 2; fs.existsSync(target); n += 1) target = path.join(folder, `${stem} (${n})${extension}`);
+    item.setSavePath(target);
+  });
+}
+
+app.whenReady().then(() => { routeDownloadsToFolder(); return createWindow(); }).catch((error) => {
   dialog.showErrorBox('Fontana School', String(error && error.message ? error.message : error));
   app.quit();
 });

@@ -12,7 +12,9 @@ import {
   attemptLimitBody, attemptLimitParams, auditQuery, catalogStatusBody, evaluationBody, metricsQuery, moduleMetricsParams, reactivateBody, reactivateParams, reasonBody,
 } from '../validators/admin.validator.js';
 import { idParams } from '../validators/common.js';
-import { validParams, validQuery } from '../middleware/validate.js';
+import { validBody, validParams, validQuery } from '../middleware/validate.js';
+import { hrExportBody, hrListQuery, type HrExportBody, type HrListQuery } from '../validators/hr.validator.js';
+import { exportProfiles, listCompletedProfiles } from '../services/hr.service.js';
 import { advisorCollectionsHistory, advisorCollectionsAttempt } from '../services/collections-admin.service.js';
 import { getPerformanceReport } from '../services/performance-report.service.js';
 import {
@@ -21,6 +23,18 @@ import {
 
 export const adminRouter = Router();
 adminRouter.use(requireAuth, requireRole(Role.ADMIN));
+
+// Recursos humanos: asesores con datos completos y su exportación a Excel (queda en auditoría).
+adminRouter.get('/hr/profiles', validate({ query: hrListQuery }), async (request, response) => {
+  response.json({ data: await listCompletedProfiles(validQuery<HrListQuery>(request)) });
+});
+adminRouter.post('/hr/export', validate({ body: hrExportBody }), async (request, response) => {
+  const { filename, buffer, count } = await exportProfiles(validBody<HrExportBody>(request).ids, users.actionContext(request));
+  response.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+  response.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+  response.setHeader('X-Fontana-Count', String(count));
+  response.send(buffer);
+});
 
 // Usuarios
 adminRouter.get('/users', validate({ query: listUsersQuery }), users.listUsers);

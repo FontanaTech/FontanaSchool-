@@ -4,6 +4,7 @@ import { officeFileHtml, officeSection } from './office-admin';
 import { mountCollectionsHistory } from './collections-admin';
 import { mountPerformanceReport } from './performance-report-admin';
 import { certificationSection } from './certification-admin';
+import { hrSection } from './hr-admin';
 
 // Panel administrativo. Navegación por hash dentro de /admin:
 // #asesores, #ficha/<id>, #validacion (y sus pestañas), #expediente/<id>, #modulos, #ofimatica, #metricas, #auditoria.
@@ -647,6 +648,7 @@ async function auditSection(view: HTMLElement): Promise<void> {
 const SECTIONS = [
   { hash: '#asesores', label: 'Asesores' },
   { hash: '#validacion', label: 'Validación y certificaciones' },
+  { hash: '#recursos-humanos', label: 'Recursos humanos' },
   { hash: '#modulos', label: 'Módulos y actividades' },
   { hash: '#ofimatica', label: 'Ofimática' },
   { hash: '#metricas', label: 'Métricas' },
@@ -666,6 +668,7 @@ export function renderAdmin(shell: Shell): void {
   async function renderInto(view: HTMLElement, hash: string): Promise<void> {
     if (hash.startsWith('#ficha/')) await advisorFileSection(view, hash.slice('#ficha/'.length));
     else if (hash.startsWith('#validacion') || hash.startsWith('#expediente/')) await certificationSection(view, hash, { askForm, run, feedback, rerender, empty });
+    else if (hash === '#recursos-humanos') await hrSection(view, { feedback, empty });
     else if (hash === '#modulos') await modulesSection(view);
     else if (hash === '#ofimatica') await officeSection(view, { askForm, run, feedback, rerender, badge, empty });
     else if (hash === '#metricas') await metricsSection(view);

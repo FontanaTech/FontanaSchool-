@@ -55,6 +55,7 @@
     "bcryptjs": "^3.0.3",
     "compression": "^1.7.5",
     "dotenv": "^18.0.6",
+    "exceljs": "^4.4.0",
     "express": "^5.2.1",
     "lucide": "^1.58.0",
     "ws": "^8.18.0",
