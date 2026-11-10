@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Preview · Bienvenida al equipo (solo diseño)</title>
+</head>
+<body class="auth-screen">
+  <!-- Página TEMPORAL de previsualización: monta el componente de bienvenida sin sesión ni examen.
+       No forma parte de la app; bórrala cuando termines de revisar el diseño. -->
+  <main class="auth-main">
+    <div id="preview-root"></div>
+  </main>
+  <script type="module">
+    import { mountTeamWelcome } from '/src/welcome/team-welcome.ts';
+    mountTeamWelcome(document.getElementById('preview-root'), {
+      certificateHref: '/induccion/certificado',
+    });
+  </script>
+</body>
+</html>

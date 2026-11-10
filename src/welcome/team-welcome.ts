@@ -6,15 +6,15 @@ import { escapar } from '../http';
 type Options = { backHref: string; certificateHref?: string };
 
 const MOMENTS = [
-  { image: 'union-equipo-fontana', title: 'Somos un solo equipo', text: 'Cada llamada bien gestionada suma a la de tus compañeros.' },
-  { image: 'recepcion-fontana', title: 'Aquí te esperamos', text: 'Llegas con las bases claras para empezar con confianza.' },
-  { image: 'companeros-fontana', title: 'Aprendemos juntos', text: 'Pregunta, practica y crece con quienes ya recorrieron este camino.' },
+  { image: 'bienvenida-momento-01', title: 'Somos un solo equipo', text: 'Cada llamada bien gestionada suma a la de tus compañeros.' },
+  { image: 'bienvenida-momento-02', title: 'Aquí te esperamos', text: 'Llegas con las bases claras para empezar con confianza.' },
+  { image: 'bienvenida-momento-03', title: 'Aprendemos juntos', text: 'Pregunta, practica y crece con quienes ya recorrieron este camino.' },
 ] as const;
 
 const picture = (name: string, alt: string, extra = ''): string =>
-  `<picture><source srcset="/imagenes/${name}.webp" type="image/webp"><img src="/imagenes/${name}.png" alt="${escapar(alt)}" width="1086" height="1448" decoding="async"${extra}></picture>`;
+  `<img src="/imagenes/${name}.png" alt="${escapar(alt)}" width="1086" height="1448" decoding="async"${extra}>`;
 
-export function mountTeamWelcome(container: HTMLElement, { backHref, certificateHref = '/induccion/certificado' }: Options): void {
+export function mountTeamWelcome(container: HTMLElement, { certificateHref = '/induccion/certificado' }: Options): void {
   container.innerHTML = `<section class="team-welcome" aria-labelledby="team-welcome-title">
     <div class="team-welcome-hero">
       <div class="team-welcome-copy">
@@ -28,10 +28,9 @@ export function mountTeamWelcome(container: HTMLElement, { backHref, certificate
         </ul>
         <div class="team-welcome-actions">
           <a class="team-welcome-primary" href="${escapar(certificateHref)}">Ver mi certificado →</a>
-          <a class="team-welcome-secondary" href="${escapar(backHref)}">Volver a mi ruta</a>
         </div>
       </div>
-      <figure class="team-welcome-hero-image">${picture('equipo-fontana', 'El equipo de Fontana celebrando')}</figure>
+      <figure class="team-welcome-hero-image"><img src="/imagenes/bienvenida-equipo-samuel.png" alt="Equipo de Fontana durante una jornada de trabajo" width="768" height="1024" decoding="async"></figure>
     </div>
     <ul class="team-welcome-moments">
       ${MOMENTS.map((moment) => `<li><figure>${picture(moment.image, moment.title, ' loading="lazy"')}</figure><div><h2>${escapar(moment.title)}</h2><p>${escapar(moment.text)}</p></div></li>`).join('')}
