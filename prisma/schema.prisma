@@ -329,6 +329,7 @@ model UserModuleProgress {
   module         TrainingModule @relation(fields: [moduleId], references: [id], onDelete: Restrict)
 
   @@unique([userId, moduleId])
+  @@index([userId, moduleId, status, lastActivityAt], map: "idx_progreso_modulo_usuario_filtro")
   @@index([moduleId, status])
   @@index([lastActivityAt])
   @@map("progreso_modulo")
@@ -351,6 +352,7 @@ model UserActivityProgress {
   activity       Activity       @relation(fields: [activityId], references: [id], onDelete: Restrict)
 
   @@unique([userId, activityId])
+  @@index([userId, activityId, status, lastActivityAt], map: "idx_progreso_actividad_usuario_filtro")
   @@index([activityId, status])
   @@map("progreso_actividad")
   @@schema("induccion")
