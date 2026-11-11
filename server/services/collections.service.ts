@@ -3,7 +3,7 @@ import { prisma } from '../config/prisma.js';
 import { COLLECTIONS_BLOCKS, COLLECTIONS_KEYS, COLLECTIONS_SLUG, COLLECTIONS_VERSION, EXAM_KEY, gradeCollections, gradeExam, mergeCollectionsAnswers, publicBlock, publicExam, reviewCollections, type CollectionsKey } from '../domain/collections.js';
 import { ForbiddenError, NotFoundError, ValidationError } from '../domain/errors.js';
 import { EVALUATION_STATUS_LABEL, evaluationStatusOf } from '../domain/evaluation-status.js';
-import { completeModule, loadSnapshot } from './progress.service.js';
+import { completeModule, loadSnapshot, type StoredModuleProgress } from './progress.service.js';
 import { startAttemptTx, submitAttemptTx } from './attempt.service.js';
 import { upsertActivityProgress, upsertModuleProgress } from '../repositories/progress.repository.js';
 import { EXAM_CONTENT_VERSION, EXAM_DRAFT_KEY, EXAM_HISTORY_PREFIX, EXAM_SECTIONS, validateExamSection } from '../domain/collections-exam.js';
@@ -22,11 +22,9 @@ const EXPERIENCED_BLOCK_PERCENT = 18;
 const DIAGNOSTIC_PERCENT = 10;
 
 async function access(db: Db, userId: string) {
-  // El usuario (siempre un asesor: la ruta exige el rol) y su estado de formación se consultan a la vez.
-  const [user, snapshot] = await Promise.all([
-    db.usuario.findUnique({ where: { id: userId }, select: { rol: true, estado: true, debeCompletarDatos: true, tieneExperienciaCobranzasDigitales: true } }),
-    loadSnapshot(db, userId),
-  ]);
+  // El usuario (siempre un asesor: la ruta exige el rol) llega junto con su estado de formación: una sola consulta.
+  const snapshot = await loadSnapshot(db, userId);
+  const { user } = snapshot;
   if (!user || user.rol !== 'asesor' || user.estado !== 'activo') throw new ForbiddenError('Este módulo es para asesores activos.');
   if (user.debeCompletarDatos) throw new ForbiddenError('Completa tu perfil antes de continuar.', 'PROFILE_INCOMPLETE');
   if (user.tieneExperienciaCobranzasDigitales === null) throw new ForbiddenError('Cuéntanos tu experiencia en cobranzas para definir tu camino en el módulo.', 'EXPERIENCE_REQUIRED');
@@ -44,6 +42,8 @@ async function access(db: Db, userId: string) {
   return {
     view, module, experienced: user.tieneExperienciaCobranzasDigitales, simulatorRoute: simulator?.route ?? null, reviewMode,
     diagnostic, diagnosticAvailability: diagnostic ? snapshot.availability.get(diagnostic.id) : undefined,
+    // Progreso guardado del módulo al abrir la transacción: evita volver a leerlo antes de actualizarlo.
+    storedProgress: snapshot.storedModuleProgress.get(view.moduleId) ?? null,
   };
 }
 
@@ -72,8 +72,11 @@ function pathOf(rows: Rows, context: Pick<Access, 'experienced' | 'diagnosticAva
   return { completed, exam, draftRow: rows.find((row) => row.blockKey === EXAM_DRAFT_KEY), diagnosticPresented, theoryLocked, examEnabled, complete, percent };
 }
 
-async function saveModuleProgress(db: Db, userId: string, moduleId: string, percent: number, now: Date) {
-  const existing = await db.userModuleProgress.findUnique({ where: { userId_moduleId: { userId, moduleId } } });
+// Con `known` (el progreso leído en esta misma transacción, con el usuario bloqueado) no se vuelve a consultar.
+type KnownProgress = Pick<StoredModuleProgress, 'status' | 'startedAt'> | null;
+
+async function saveModuleProgress(db: Db, userId: string, moduleId: string, percent: number, now: Date, known?: KnownProgress) {
+  const existing = known !== undefined ? known : await db.userModuleProgress.findUnique({ where: { userId_moduleId: { userId, moduleId } } });
   await upsertModuleProgress(db, userId, moduleId, {
     status: existing?.status === 'PASSED' ? 'PASSED' : 'IN_PROGRESS',
     percent: existing?.status === 'PASSED' ? 100 : percent,
@@ -82,9 +85,14 @@ async function saveModuleProgress(db: Db, userId: string, moduleId: string, perc
   return existing?.status === 'PASSED';
 }
 
+// Las filas ya leídas con la que se acaba de guardar: el mismo resultado que volver a leerlas, sin otra consulta.
+function withSavedRow(rows: Rows, saved: Rows[number]): Rows {
+  return [...rows.filter((row) => row.id !== saved.id && row.blockKey !== saved.blockKey), saved];
+}
+
 // Terminar la teoría aprueba la actividad obligatoria y emite el sello que habilita «Enfréntate a la objeción».
-async function finishModule(db: Db, userId: string, module: Access['module'], now: Date) {
-  const alreadyPassed = await saveModuleProgress(db, userId, module.id, 100, now);
+async function finishModule(db: Db, userId: string, module: Access['module'], now: Date, known?: KnownProgress) {
+  const alreadyPassed = await saveModuleProgress(db, userId, module.id, 100, now, known);
   for (const activity of module.activities.filter((item) => item.status === 'ACTIVE' && item.isRequired)) {
     const progress = await db.userActivityProgress.findUnique({ where: { userId_activityId: { userId, activityId: activity.id } } });
     await upsertActivityProgress(db, userId, activity.id, { status: 'PASSED', startedAt: progress?.startedAt ?? now, completedAt: progress?.completedAt ?? now, lastActivityAt: now });
@@ -182,9 +190,9 @@ export async function submitCollectionsBlock(userId: string, key: CollectionsKey
     });
     if (completedAt) completed.add(key);
     const done = COLLECTIONS_KEYS.every((item) => completed.has(item));
-    const percent = path.complete || done ? 100 : pathOf(await progressRows(tx, userId, module.id), context, false).percent;
-    if (done) await finishModule(tx, userId, module, now);
-    else await saveModuleProgress(tx, userId, module.id, percent, now);
+    const percent = path.complete || done ? 100 : pathOf(withSavedRow(rows, saved), context, false).percent;
+    if (done) await finishModule(tx, userId, module, now, context.storedProgress);
+    else await saveModuleProgress(tx, userId, module.id, percent, now, context.storedProgress);
     return { ...feedback, answers: merged, questionResult, completed: Boolean(completedAt), attempts: saved.attempts,
       completedKeys: COLLECTIONS_KEYS.filter((item) => completed.has(item)),
       nextBlock: completedAt && next ? { key: next.key, content: publicBlock(next) } : null,
@@ -210,14 +218,15 @@ export async function completeCollectionsBlock(userId: string, key: CollectionsK
     // Modo repaso: el asesor certificado navega la teoría sin cambiar su historial.
     if (context.reviewMode) return;
     const previous = rows.find((row) => row.blockKey === key);
-    await tx.collectionsBlockProgress.upsert({
+    const saved = await tx.collectionsBlockProgress.upsert({
       where: { userId_moduleId_blockKey_contentVersion: { userId, moduleId: module.id, blockKey: key, contentVersion: COLLECTIONS_VERSION } },
       create: { userId, moduleId: module.id, blockKey: key, contentVersion: COLLECTIONS_VERSION, answers: {}, completedAt: now },
       update: { completedAt: previous?.completedAt ?? now },
     });
     path.completed.add(key);
-    if (COLLECTIONS_KEYS.every((item) => path.completed.has(item))) await finishModule(tx, userId, module, now);
-    else await saveModuleProgress(tx, userId, module.id, pathOf(await progressRows(tx, userId, module.id), context, false).percent, now);
+    if (COLLECTIONS_KEYS.every((item) => path.completed.has(item))) await finishModule(tx, userId, module, now, context.storedProgress);
+    // El avance sale de las filas ya leídas más el bloque recién guardado (misma transacción, usuario bloqueado).
+    else await saveModuleProgress(tx, userId, module.id, pathOf(withSavedRow(rows, saved), context, false).percent, now, context.storedProgress);
   });
   return collectionsState(userId);
 }

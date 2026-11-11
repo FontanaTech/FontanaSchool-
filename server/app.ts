@@ -20,6 +20,7 @@ import { mountWebView } from './views/web.view.js';
 import compression from 'compression';
 import { publishChange } from './realtime/admin-live.js';
 import { clearSessionCache } from './services/session-cache.js';
+import { markDatabaseActivity } from './config/prisma.js';
 
 const currentDirectory = path.dirname(fileURLToPath(import.meta.url));
 const projectRoot = path.resolve(currentDirectory, '..');
@@ -33,7 +34,8 @@ if (env.TRUST_PROXY !== false) app.set('trust proxy', env.TRUST_PROXY);
 app.use(requestId);
 // Comprime respuestas de texto (JSON, HTML, JS, CSS): menos bytes por la red, sobre todo en las pantallas grandes.
 app.use(compression());
-app.use('/api', (_request, response, next) => { response.setHeader('Cache-Control', 'no-store'); next(); });
+// Toda petición a la API cuenta como actividad: mientras el asesor trabaja, las conexiones a la base se mantienen abiertas.
+app.use('/api', (_request, response, next) => { markDatabaseActivity(); response.setHeader('Cache-Control', 'no-store'); next(); });
 
 // Integraciones antes del parser JSON y fuera de mismaProcedencia: se autentican con firma HMAC.
 app.use('/api/integrations/typing', typingRouter);

@@ -1,8 +1,12 @@
 import { env } from './config/env.js';
-import { disconnect } from './config/prisma.js';
+import { disconnect, keepConnectionsWarm } from './config/prisma.js';
 import { app } from './app.js';
 import { attachAdminLive } from './realtime/admin-live.js';
 import { existeAdministrador } from './services/bootstrap-admin.service.js';
+
+// Las conexiones a la base se abren de una vez al arrancar (en paralelo, mientras se ve el inicio de sesión) y se
+// mantienen abiertas mientras el asesor trabaja. Ver keepConnectionsWarm.
+keepConnectionsWarm();
 
 // Nunca se imprimen contraseñas al arrancar: el administrador inicial se crea con el script CLI.
 try {

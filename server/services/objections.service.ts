@@ -13,11 +13,9 @@ const json = (value: unknown): Prisma.InputJsonValue => JSON.parse(JSON.stringif
 const keyFor = (number: number) => `${OBJECTIONS_ATTEMPT_PREFIX}${number}`;
 
 async function access(db: Db, userId: string) {
-  // El usuario (siempre un asesor: la ruta exige el rol) y su estado de formación se consultan a la vez.
-  const [user, snapshot] = await Promise.all([
-    db.usuario.findUnique({ where: { id: userId }, select: { rol: true, estado: true, debeCompletarDatos: true } }),
-    loadSnapshot(db, userId),
-  ]);
+  // El usuario (siempre un asesor: la ruta exige el rol) llega junto con su estado de formación: una sola consulta.
+  const snapshot = await loadSnapshot(db, userId);
+  const { user } = snapshot;
   if (!user || user.rol !== 'asesor' || user.estado !== 'activo') throw new ForbiddenError('Este módulo es para asesores activos.');
   if (user.debeCompletarDatos) throw new ForbiddenError('Completa tu perfil antes de continuar.', 'PROFILE_INCOMPLETE');
   const view = snapshot.views.find(v => v.slug === OBJECTIONS_SLUG);

@@ -48,6 +48,9 @@ vi.mock('../services/progress.service.js', () => ({
     modules: [{ id: 'module', activities: [{ id: 'theory', type: 'LESSON', isRequired: true, status: 'ACTIVE' }, { id: 'diagnostic', type: 'QUIZ', isRequired: false, status: 'ACTIVE' }] }],
     availability: new Map([['diagnostic', memory.availability]]),
     certification: { status: 'EN_FORMACION', reason: null },
+    // El usuario y el progreso guardado llegan en la misma consulta del estado de formación.
+    user: { rol: 'asesor', estado: 'activo', debeCompletarDatos: false, tieneExperienciaCobranzasDigitales: memory.experienced },
+    storedModuleProgress: new Map(memory.moduleProgress ? [['module', memory.moduleProgress]] : []),
   }),
 }));
 // El intento oficial: un solo intento; startAttemptTx retoma el abierto.

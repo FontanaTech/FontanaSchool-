@@ -1,4 +1,4 @@
-import { Prisma, type Evaluation, type ProgressStatus } from '@prisma/client';
+import { Prisma, type CertificationDecisionType, type Evaluation, type ProgressStatus } from '@prisma/client';
 import { prisma, type Db } from '../config/prisma.js';
 import { initialEvaluation } from '../domain/evaluation-retry.js';
 import { CERTIFICATE_MODULE_SLUG } from '../domain/enums.js';
@@ -10,8 +10,8 @@ import {
 } from '../domain/progress.js';
 import { activeEvaluations, listVisibleModules, type CatalogModule } from '../repositories/catalog.repository.js';
 import {
-  activeSealsForUser, activityProgressForUser, attemptLimitsForUser, attemptsForUser, createMissingModuleProgress, createSeal, dependentsOf,
-  findActiveSeal, moduleProgressForUser, overridesForUser, upsertModuleProgress,
+  activeSealModuleIds, activeSealsForUser, activityProgressForUser, attemptLimitsForUser, attemptsForUser, createMissingModuleProgress, createSeal,
+  dependentsWithPrerequisites, moduleProgressForUser, overridesForUser, upsertModuleProgress,
 } from '../repositories/progress.repository.js';
 
 function toModuleInput(module: CatalogModule): ModuleInput {
@@ -30,6 +30,12 @@ export async function initializeForUser(db: Db, userId: string, modules?: Catalo
   await createMissingModuleProgress(db, userId, catalog.map((module) => ({ moduleId: module.id, status: initialStatus(module) })));
 }
 
+// Datos del asesor que revisan los módulos antes de abrirse (rol, estado, perfil y experiencia).
+export type SnapshotUser = { rol: string; estado: string; debeCompletarDatos: boolean; tieneExperienciaCobranzasDigitales: boolean | null };
+
+// Progreso guardado del módulo (no el efectivo): lo usan quienes lo actualizan para no volver a leerlo.
+export type StoredModuleProgress = { status: ProgressStatus; startedAt: Date | null; lastActivityAt: Date | null; percent: Prisma.Decimal };
+
 export type TrainingSnapshot = {
   modules: CatalogModule[];
   views: ModuleView[];
@@ -40,10 +46,29 @@ export type TrainingSnapshot = {
   attemptLimits: Map<string, number>;
   certification: CertificationState;
   activeCertificateId: string | null;
+  // null si el usuario no existe.
+  user: SnapshotUser | null;
+  storedModuleProgress: Map<string, StoredModuleProgress>;
 };
 
+type CertificationFacts = {
+  certificateId: string | null;
+  decision: { decision: CertificationDecisionType; reason: string | null; createdAt: Date } | null;
+  lastProgressAt: Date | null;
+};
+
+// La última decisión del administrador deja de contar si después se aprobó reiniciar el curso.
+function certificationFacts(input: {
+  certificateId: string | null; decision: CertificationFacts['decision']; lastSubmittedAt: Date | null; lastSealAt: Date | null; restartDecidedAt: Date | null;
+}): CertificationFacts {
+  const times = [input.lastSubmittedAt, input.lastSealAt].filter((value): value is Date => Boolean(value)).map((value) => value.getTime());
+  const currentDecision = input.decision && (!input.restartDecidedAt || input.decision.createdAt > input.restartDecidedAt) ? input.decision : null;
+  return { certificateId: input.certificateId, decision: currentDecision, lastProgressAt: times.length ? new Date(Math.max(...times)) : null };
+}
+
 // Certificado activo, última decisión del administrador y fecha del último avance (intento enviado o sello).
-async function loadCertificationFacts(db: Db, userId: string) {
+// Solo para la función antigua de la base (versión 1): la versión 2 ya trae estos datos.
+async function loadCertificationFacts(db: Db, userId: string): Promise<CertificationFacts> {
   const [certificate, decision, attempt, seal, restart] = await Promise.all([
     db.certificate.findFirst({ where: { userId, status: 'ACTIVE' }, select: { id: true } }),
     db.certificationDecision.findFirst({ where: { userId }, orderBy: { createdAt: 'desc' }, select: { decision: true, reason: true, createdAt: true } }),
@@ -51,47 +76,72 @@ async function loadCertificationFacts(db: Db, userId: string) {
     db.seal.findFirst({ where: { userId, status: 'ACTIVE' }, orderBy: { issuedAt: 'desc' }, select: { issuedAt: true } }),
     db.reactivationRequest.findFirst({ where: { userId, restartCourse: true, status: 'APPROVED' }, orderBy: { decidedAt: 'desc' }, select: { decidedAt: true } }),
   ]);
-  const times = [attempt?.submittedAt, seal?.issuedAt].filter((value): value is Date => Boolean(value)).map((value) => value.getTime());
-  const currentDecision = decision && (!restart?.decidedAt || decision.createdAt > restart.decidedAt) ? decision : null;
-  return { certificateId: certificate?.id ?? null, decision: currentDecision, lastProgressAt: times.length ? new Date(Math.max(...times)) : null };
+  return certificationFacts({
+    certificateId: certificate?.id ?? null, decision, lastSubmittedAt: attempt?.submittedAt ?? null, lastSealAt: seal?.issuedAt ?? null, restartDecidedAt: restart?.decidedAt ?? null,
+  });
+}
+
+function findSnapshotUser(db: Db, userId: string): Promise<SnapshotUser | null> {
+  return db.usuario.findUnique({ where: { id: userId }, select: { rol: true, estado: true, debeCompletarDatos: true, tieneExperienciaCobranzasDigitales: true } });
 }
 
 // Datos crudos del estado de formación de un usuario, con las fechas ya convertidas.
 type RawState = {
   modules: CatalogModule[];
-  moduleProgress: { moduleId: string; status: ProgressStatus; lastActivityAt: Date | null; percent: Prisma.Decimal }[];
+  moduleProgress: { moduleId: string; status: ProgressStatus; lastActivityAt: Date | null; startedAt: Date | null; percent: Prisma.Decimal }[];
   activityProgress: { activityId: string; status: ProgressStatus }[];
   seals: { moduleId: string }[];
   overrides: OverrideLite[];
   evaluations: Map<string, Evaluation>;
   attempts: Awaited<ReturnType<typeof attemptsForUser>>;
   attemptLimits: Map<string, number>;
+  facts: CertificationFacts;
+  user: SnapshotUser | null;
 };
 
 const toDate = (value: string | null | undefined): Date | null => (value ? new Date(value) : null);
 
-// La función concentra el catálogo, intentos y permisos. El progreso se lee en paralelo para incluir
-// el porcentaje de los bloques de cobranzas, que versiones anteriores de la función no devuelven.
+// Versión de la función que trae el progreso con porcentaje, la certificación y el usuario (migración
+// 20261111190000_estado_formacion_un_viaje). Con ella todo el estado sale en una sola consulta.
+const FULL_STATE_VERSION = 2;
+
+// La función concentra el catálogo, el progreso, los intentos, los permisos, la certificación y el usuario.
+// Con una base que aún tenga la versión 1 de la función, lo que falta se pide aparte (en paralelo).
 async function loadRawViaFunction(db: Db, userId: string): Promise<RawState> {
-  const [rows, moduleProgress] = await Promise.all([
-    db.$queryRaw<{ state: Record<string, any[]> }[]>`SELECT induccion.fn_estado_formacion(${userId}::uuid) AS state`,
-    moduleProgressForUser(db, userId),
-  ]);
+  const rows = await db.$queryRaw<{ state: Record<string, any> }[]>`SELECT induccion.fn_estado_formacion(${userId}::uuid) AS state`;
   const state = rows[0]!.state;
-  const modules = state.modules.map((module) => ({
+  const modules = (state.modules as Record<string, any>[]).map((module) => ({
     ...module, createdAt: toDate(module.createdAt), updatedAt: toDate(module.updatedAt),
     activities: module.activities.map((activity: Record<string, any>) => ({ ...activity, createdAt: toDate(activity.createdAt), updatedAt: toDate(activity.updatedAt) })),
   })) as CatalogModule[];
-  return {
+  const common = {
     modules,
-    moduleProgress,
     activityProgress: state.activityProgress as RawState['activityProgress'],
     seals: state.seals as RawState['seals'],
-    overrides: state.overrides.map((row) => ({ ...row, expiresAt: toDate(row.expiresAt), revokedAt: toDate(row.revokedAt), consumedAt: toDate(row.consumedAt), createdAt: toDate(row.createdAt)! })) as OverrideLite[],
-    evaluations: new Map(state.evaluations.map((row) => [row.activityId, { ...row, minimumScore: new Prisma.Decimal(row.minimumScore), createdAt: toDate(row.createdAt)! } as Evaluation])),
-    attempts: state.attempts.map((row) => ({ ...row, submittedAt: toDate(row.submittedAt), startedAt: toDate(row.startedAt)!, evaluation: { activityId: row.activityId } })) as RawState['attempts'],
-    attemptLimits: new Map(state.attemptLimits.map((row) => [row.activityId, row.maxAttempts])),
+    overrides: (state.overrides as Record<string, any>[]).map((row) => ({ ...row, expiresAt: toDate(row.expiresAt), revokedAt: toDate(row.revokedAt), consumedAt: toDate(row.consumedAt), createdAt: toDate(row.createdAt)! })) as OverrideLite[],
+    evaluations: new Map((state.evaluations as Record<string, any>[]).map((row) => [row.activityId as string, { ...row, minimumScore: new Prisma.Decimal(row.minimumScore), createdAt: toDate(row.createdAt)! } as Evaluation])),
+    attempts: (state.attempts as Record<string, any>[]).map((row) => ({ ...row, submittedAt: toDate(row.submittedAt), startedAt: toDate(row.startedAt)!, evaluation: { activityId: row.activityId } })) as RawState['attempts'],
+    attemptLimits: new Map((state.attemptLimits as Record<string, any>[]).map((row) => [row.activityId as string, row.maxAttempts as number])),
   };
+  if (Number(state.version) >= FULL_STATE_VERSION) {
+    const certification = state.certification as Record<string, any>;
+    const decision = certification.decision as Record<string, any> | null;
+    return {
+      ...common,
+      moduleProgress: (state.moduleProgress as Record<string, any>[]).map((row) => ({
+        moduleId: row.moduleId, status: row.status, lastActivityAt: toDate(row.lastActivityAt), startedAt: toDate(row.startedAt), percent: new Prisma.Decimal(row.percent),
+      })),
+      facts: certificationFacts({
+        certificateId: certification.certificateId ?? null,
+        decision: decision ? { decision: decision.decision, reason: decision.reason ?? null, createdAt: toDate(decision.createdAt)! } : null,
+        lastSubmittedAt: toDate(certification.lastSubmittedAt), lastSealAt: toDate(certification.lastSealAt), restartDecidedAt: toDate(certification.restartDecidedAt),
+      }),
+      user: (state.user as SnapshotUser | null) ?? null,
+    };
+  }
+  // Función antigua: el porcentaje, la certificación y el usuario se piden aparte.
+  const [moduleProgress, facts, user] = await Promise.all([moduleProgressForUser(db, userId), loadCertificationFacts(db, userId), findSnapshotUser(db, userId)]);
+  return { ...common, moduleProgress, facts, user };
 }
 
 // Camino de respaldo: las consultas por separado. Solo se usa fuera de una transacción (dentro, un error
@@ -99,16 +149,18 @@ async function loadRawViaFunction(db: Db, userId: string): Promise<RawState> {
 async function loadRawViaQueries(db: Db, userId: string): Promise<RawState> {
   const modules = await listVisibleModules(db);
   const activityIds = modules.flatMap((module) => module.activities.map((activity) => activity.id));
-  const [moduleProgress, activityProgress, seals, overrides, evaluations, attemptLimits] = await Promise.all([
+  const [moduleProgress, activityProgress, seals, overrides, evaluations, attemptLimits, facts, user] = await Promise.all([
     moduleProgressForUser(db, userId),
     activityProgressForUser(db, userId),
     activeSealsForUser(db, userId),
     overridesForUser(db, userId),
     activeEvaluations(db, activityIds),
     attemptLimitsForUser(db, userId),
+    loadCertificationFacts(db, userId),
+    findSnapshotUser(db, userId),
   ]);
   const attempts = await attemptsForUser(db, userId, [...evaluations.keys()]);
-  return { modules, moduleProgress, activityProgress, seals, overrides, evaluations, attempts, attemptLimits };
+  return { modules, moduleProgress, activityProgress, seals, overrides, evaluations, attempts, attemptLimits, facts, user };
 }
 
 async function loadRaw(db: Db, userId: string): Promise<RawState> {
@@ -135,14 +187,13 @@ function assignExercises(modules: CatalogModule[], userId: string): CatalogModul
 // Con sync, el estado guardado se alinea con el efectivo (excepciones vencidas o revocadas, desbloqueos)
 // para que las métricas en SQL lo reflejen. Un módulo aprobado o inactivo conserva su estado guardado.
 export async function loadSnapshot(db: Db, userId: string, now = new Date(), options: { sync?: boolean; healed?: boolean } = {}): Promise<TrainingSnapshot> {
-  // El estado de la formación y los datos de certificación son independientes: se piden a la vez.
-  const [loaded, facts] = await Promise.all([loadRaw(db, userId), loadCertificationFacts(db, userId)]);
-  let state = loaded;
+  // Una sola consulta: catálogo, progreso, intentos, permisos, certificación y usuario (función versión 2).
+  let state = await loadRaw(db, userId);
   if (state.moduleProgress.length < state.modules.length) {
     await initializeForUser(db, userId, state.modules);
     state = await loadRaw(db, userId);
   }
-  const { moduleProgress, activityProgress, seals, overrides, evaluations, attempts, attemptLimits } = state;
+  const { moduleProgress, activityProgress, seals, overrides, evaluations, attempts, attemptLimits, facts, user } = state;
   const modules = assignExercises(state.modules, userId);
   const sealedModuleIds = new Set(seals.map((seal) => seal.moduleId));
   const certificateModule = modules.find((module) => module.slug === CERTIFICATE_MODULE_SLUG);
@@ -192,7 +243,8 @@ export async function loadSnapshot(db: Db, userId: string, now = new Date(), opt
       await db.userModuleProgress.updateMany({ where: { userId, moduleId: view.moduleId, status: { not: 'PASSED' } }, data: { status: view.status } });
     }
   }
-  return { modules, views, overrides, availability, evaluations, attemptLimits, certification, activeCertificateId: facts.certificateId };
+  const storedModuleProgress = new Map(moduleProgress.map((row) => [row.moduleId, { status: row.status, startedAt: row.startedAt, lastActivityAt: row.lastActivityAt, percent: row.percent }]));
+  return { modules, views, overrides, availability, evaluations, attemptLimits, certification, activeCertificateId: facts.certificateId, user, storedModuleProgress };
 }
 
 export async function computeModuleState(userId: string, db: Db = prisma, options: { sync?: boolean } = {}): Promise<ModuleView[]> {
@@ -242,29 +294,41 @@ export async function getAdvisorSummary(userId: string) {
   };
 }
 
-// Recalcula el porcentaje del módulo a partir de sus actividades obligatorias activas.
-export async function refreshModulePercent(db: Db, userId: string, moduleId: string): Promise<{ percent: Prisma.Decimal; complete: boolean }> {
-  const all = await db.activity.findMany({ where: { moduleId, status: 'ACTIVE', isRequired: true }, select: { id: true, type: true, order: true, module: { select: { slug: true } } } });
+export type ModulePercent = { percent: Prisma.Decimal; complete: boolean };
+
+// Recalcula el porcentaje del módulo a partir de sus actividades obligatorias activas. Una sola consulta: las
+// actividades, el módulo (Tipifica cuenta solo las llamadas asignadas) y si cada una está aprobada.
+export async function refreshModulePercent(db: Db, userId: string, moduleId: string): Promise<ModulePercent> {
+  const all = await db.$queryRaw<{ id: string; type: string; order: number; slug: string; passed: boolean }[]>`
+    SELECT a."id", a."type"::text AS "type", a."order", m."slug",
+           EXISTS (SELECT 1 FROM induccion.progreso_actividad pa
+                   WHERE pa."user_id" = ${userId}::uuid AND pa."activity_id" = a."id" AND pa."status" = 'PASSED') AS "passed"
+    FROM induccion.actividades a
+    JOIN induccion.modulos_formacion m ON m."id" = a."module_id"
+    WHERE a."module_id" = ${moduleId}::uuid AND a."status" = 'ACTIVE' AND a."is_required" = true`;
   const mine = new Set(assignedExerciseNumbers(userId));
-  const activities = all.filter((activity) => activity.module.slug !== TIPIFICA_MODULE_SLUG || activity.type !== 'TYPIFICATION' || mine.has(activity.order));
-  const passed = activities.length === 0 ? 0 : await db.userActivityProgress.count({ where: { userId, status: 'PASSED', activityId: { in: activities.map((activity) => activity.id) } } });
+  const activities = all.filter((activity) => activity.slug !== TIPIFICA_MODULE_SLUG || activity.type !== 'TYPIFICATION' || mine.has(Number(activity.order)));
+  const passed = activities.filter((activity) => activity.passed).length;
   const percent = percentOf(passed, activities.length);
   return { percent, complete: activities.length > 0 && passed === activities.length };
 }
 
 // Debe ejecutarse dentro de una transacción. Emite el sello una sola vez y desbloquea dependientes.
-export async function completeModule(db: Db, userId: string, moduleId: string, evidenceAttemptId?: string, now = new Date()): Promise<{ sealIssued: boolean; unlocked: string[] }> {
-  const { percent, complete } = await refreshModulePercent(db, userId, moduleId);
+// `known`: el porcentaje que quien llama acaba de calcular en esta misma transacción (evita repetir la consulta).
+export async function completeModule(db: Db, userId: string, moduleId: string, evidenceAttemptId?: string, now = new Date(), known?: ModulePercent): Promise<{ sealIssued: boolean; unlocked: string[] }> {
+  const { percent, complete } = known ?? await refreshModulePercent(db, userId, moduleId);
   if (!complete) return { sealIssued: false, unlocked: [] };
   await upsertModuleProgress(db, userId, moduleId, { status: 'PASSED', percent, completedAt: now, lastActivityAt: now });
+  // Los sellos activos del asesor en una consulta: dicen si este módulo ya tenía el suyo y qué dependientes se abren.
+  const sealed = new Set(await activeSealModuleIds(db, userId));
   let sealIssued = false;
-  if (!await findActiveSeal(db, userId, moduleId)) {
+  if (!sealed.has(moduleId)) {
     await createSeal(db, { userId, moduleId, status: 'ACTIVE', issuedAt: now, evidenceAttemptId: evidenceAttemptId ?? null });
+    sealed.add(moduleId);
     sealIssued = true;
   }
-  const sealed = new Set((await activeSealsForUser(db, userId)).map((seal) => seal.moduleId));
   const unlocked: string[] = [];
-  for (const dependent of await dependentsOf(db, moduleId)) {
+  for (const dependent of await dependentsWithPrerequisites(db, moduleId)) {
     if (!dependent.prerequisites.every((edge) => sealed.has(edge.prerequisiteModuleId))) continue;
     const current = await db.userModuleProgress.findUnique({ where: { userId_moduleId: { userId, moduleId: dependent.id } } });
     if (!current || current.status === 'BLOCKED' || current.status === 'NOT_STARTED') {

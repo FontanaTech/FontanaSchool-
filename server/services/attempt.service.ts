@@ -3,7 +3,6 @@ import { prisma } from '../config/prisma.js';
 import { Role, UserStatus } from '../domain/enums.js';
 import { ConflictError, ForbiddenError, NotFoundError, ValidationError } from '../domain/errors.js';
 import { computeAvailability, grantedAttempts, type Availability } from '../domain/progress.js';
-import { activeEvaluations, findActivityById } from '../repositories/catalog.repository.js';
 import {
   findModuleProgress, lockActivityProgress, overridesForUser, upsertActivityProgress, upsertModuleProgress,
 } from '../repositories/progress.repository.js';
@@ -16,10 +15,12 @@ import { completeModule, loadSnapshot, refreshModulePercent } from './progress.s
 
 type Tx = Prisma.TransactionClient;
 
+const CERTIFIED_MESSAGE = 'Ya estás certificado: este es el modo repaso y no registra nuevas evaluaciones oficiales.';
+
 // Un asesor certificado repasa sin generar notas nuevas: ningún intento oficial se abre después del certificado.
 export async function assertNotCertified(db: Tx | typeof prisma, userId: string): Promise<void> {
   if (await db.certificate.findFirst({ where: { userId, status: 'ACTIVE' }, select: { id: true } })) {
-    throw new ConflictError('Ya estás certificado: este es el modo repaso y no registra nuevas evaluaciones oficiales.', 'REVIEW_MODE');
+    throw new ConflictError(CERTIFIED_MESSAGE, 'REVIEW_MODE');
   }
 }
 
@@ -38,29 +39,35 @@ export async function startAttempt(userId: string, activityId: string, options: 
 }
 
 // Versión para usar dentro de una transacción mayor (módulo de Ofimática: guarda su resultado junto al intento).
+// Cada consulta dentro de la transacción es una ida y vuelta a la base (~90 ms con Neon), una tras otra. Por eso el
+// usuario, el certificado, la evaluación vigente, los intentos, las excepciones y el cupo salen del estado de formación,
+// que se lee en UNA consulta ya con la fila de progreso bloqueada (los mismos datos que antes se pedían por separado).
 export async function startAttemptTx(tx: Tx, userId: string, activityId: string, options: { now?: Date } = {}) {
   const now = options.now ?? new Date();
   {
-    const user = await tx.usuario.findUnique({ where: { id: userId }, select: { rol: true, estado: true } });
-    if (!user || user.rol !== Role.ADVISOR || user.estado !== UserStatus.ACTIVE) throw new ForbiddenError('El usuario no puede iniciar intentos.', 'USER_NOT_ALLOWED');
-    await assertNotCertified(tx, userId);
-    const activity = await findActivityById(tx, activityId);
+    // La actividad se valida antes de crear su fila de progreso (la fila exige que exista).
+    const activity = await tx.activity.findUnique({ where: { id: activityId }, select: { id: true, moduleId: true, status: true, isRequired: true } });
     if (!activity) throw new NotFoundError('La actividad no existe.', 'ACTIVITY_NOT_FOUND');
     if (activity.status !== 'ACTIVE') throw new ForbiddenError('Actividad no disponible temporalmente.', 'ACTIVITY_INACTIVE');
 
     // Fila de progreso creada y bloqueada: serializa intentos simultáneos del mismo usuario.
     await tx.userActivityProgress.upsert({ where: { userId_activityId: { userId, activityId } }, create: { userId, activityId, status: 'AVAILABLE' }, update: {} });
-    await lockActivityProgress(tx, userId, activityId);
+    const locked = await lockActivityProgress(tx, userId, activityId);
 
-    const view = (await loadSnapshot(tx, userId, now)).views.find((module) => module.moduleId === activity.moduleId);
+    const snapshot = await loadSnapshot(tx, userId, now);
+    const { user } = snapshot;
+    if (!user || user.rol !== Role.ADVISOR || user.estado !== UserStatus.ACTIVE) throw new ForbiddenError('El usuario no puede iniciar intentos.', 'USER_NOT_ALLOWED');
+    if (snapshot.activeCertificateId) throw new ConflictError(CERTIFIED_MESSAGE, 'REVIEW_MODE');
+    const view = snapshot.views.find((module) => module.moduleId === activity.moduleId);
     if (view?.status === 'FAILED' && activity.isRequired) throw new ConflictError('No tienes intentos disponibles. Solicita una reactivación al administrador.', 'NO_ATTEMPTS_LEFT');
     if (!view || !view.enabled) {
       throw new ForbiddenError(view?.blockedReason ?? 'Módulo no disponible.', 'MODULE_BLOCKED', { blockedReason: view?.blockedReason ?? null });
     }
-    const evaluation = (await activeEvaluations(tx, [activityId])).get(activityId);
+    const evaluation = snapshot.evaluations.get(activityId);
     if (!evaluation) throw new ConflictError('La actividad todavía no tiene una evaluación configurada.', 'NO_EVALUATION');
 
-    const availability = await availabilityFor(tx, userId, activityId, evaluation, now);
+    // La misma cuenta que hacía availabilityFor: intentos de todas las versiones, excepciones y cupo del asesor.
+    const availability = snapshot.availability.get(activityId) ?? await availabilityFor(tx, userId, activityId, evaluation, now);
     if (availability.openAttemptId) {
       return { attempt: await tx.attempt.findUniqueOrThrow({ where: { id: availability.openAttemptId } }), resumed: true };
     }
@@ -84,11 +91,11 @@ export async function startAttemptTx(tx: Tx, userId: string, activityId: string,
       await tx.userActivityOverride.update({ where: { id: availability.resetWaitOverrideId }, data: { consumedAt: now } });
     }
 
-    const activityProgress = await tx.userActivityProgress.findUniqueOrThrow({ where: { userId_activityId: { userId, activityId } } });
-    await upsertActivityProgress(tx, userId, activityId, { status: 'IN_PROGRESS', startedAt: activityProgress.startedAt ?? now, lastActivityAt: now });
+    await upsertActivityProgress(tx, userId, activityId, { status: 'IN_PROGRESS', startedAt: locked?.startedAt ?? now, lastActivityAt: now });
     // Una actividad no obligatoria (examen diagnóstico) no cambia el estado del módulo.
     if (!activity.isRequired) return { attempt, resumed: false };
-    const moduleProgress = await findModuleProgress(tx, userId, activity.moduleId);
+    // Progreso del módulo leído en el estado de formación (esta transacción no lo ha cambiado todavía).
+    const moduleProgress = snapshot.storedModuleProgress.get(activity.moduleId) ?? null;
     await upsertModuleProgress(tx, userId, activity.moduleId, {
       status: moduleProgress?.status === 'PASSED' ? 'PASSED' : 'IN_PROGRESS',
       startedAt: moduleProgress?.startedAt ?? now,
@@ -118,11 +125,40 @@ export async function submitAttempt(userId: string, attemptId: string, input: Su
   return prisma.$transaction((tx) => submitAttemptTx(tx, userId, attemptId, input));
 }
 
+// El intento bloqueado junto con su evaluación y su actividad, en una sola consulta (con Prisma, el bloqueo y cada
+// relación incluida eran cuatro idas y vueltas a la base). Solo se bloquea la fila del intento, como antes.
+type LockedAttempt = {
+  id: string; userId: string; status: string; startedAt: Date;
+  evaluation: { id: string; minimumScore: Prisma.Decimal; maxAttempts: number; waitMinutes: number; activity: { id: string; moduleId: string; isRequired: boolean } };
+};
+async function lockAttempt(tx: Tx, attemptId: string): Promise<LockedAttempt | null> {
+  const rows = await tx.$queryRaw<{
+    id: string; user_id: string; status: string; started_at: Date; evaluation_id: string; minimum_score: Prisma.Decimal; max_attempts: number;
+    wait_minutes: number; activity_id: string; module_id: string; is_required: boolean;
+  }[]>`
+    SELECT i."id", i."user_id", i."status"::text AS "status", i."started_at",
+           e."id" AS "evaluation_id", e."minimum_score", e."max_attempts", e."wait_minutes",
+           a."id" AS "activity_id", a."module_id", a."is_required"
+    FROM induccion.intentos i
+    JOIN induccion.evaluaciones e ON e."id" = i."evaluation_id"
+    JOIN induccion.actividades a ON a."id" = e."activity_id"
+    WHERE i."id" = ${attemptId}::uuid
+    FOR UPDATE OF i`;
+  const row = rows[0];
+  if (!row) return null;
+  return {
+    id: row.id, userId: row.user_id, status: row.status, startedAt: row.started_at,
+    evaluation: {
+      id: row.evaluation_id, minimumScore: new Prisma.Decimal(row.minimum_score), maxAttempts: Number(row.max_attempts), waitMinutes: Number(row.wait_minutes),
+      activity: { id: row.activity_id, moduleId: row.module_id, isRequired: row.is_required },
+    },
+  };
+}
+
 export async function submitAttemptTx(tx: Tx, userId: string, attemptId: string, input: SubmitInput) {
   const now = input.now ?? new Date();
   {
-    await tx.$queryRaw`SELECT id FROM induccion.intentos WHERE id = ${attemptId}::uuid FOR UPDATE`;
-    const attempt = await tx.attempt.findUnique({ where: { id: attemptId }, include: { evaluation: { include: { activity: true } } } });
+    const attempt = await lockAttempt(tx, attemptId);
     if (!attempt || attempt.userId !== userId) throw new NotFoundError('Intento no encontrado.', 'ATTEMPT_NOT_FOUND');
     if (attempt.status !== 'IN_PROGRESS') throw new ConflictError('El intento ya fue enviado.', 'ATTEMPT_CLOSED');
 
@@ -142,20 +178,22 @@ export async function submitAttemptTx(tx: Tx, userId: string, attemptId: string,
 
     const activity = attempt.evaluation.activity;
     const availability = await availabilityFor(tx, userId, activity.id, attempt.evaluation, now);
-    const activityProgress = await tx.userActivityProgress.findUnique({ where: { userId_activityId: { userId, activityId: activity.id } } });
-    await upsertActivityProgress(tx, userId, activity.id, {
-      status: passed ? 'PASSED' : availability.exhausted ? 'FAILED' : 'IN_PROGRESS',
-      attemptsUsed: (activityProgress?.attemptsUsed ?? 0) + 1,
-      completedAt: passed ? now : activityProgress?.completedAt ?? null,
-      lastActivityAt: now,
+    // Un solo upsert: suma el intento en la base (antes se leía la fila y luego se escribía) y conserva la fecha de
+    // aprobación anterior si este intento no aprueba.
+    const status = passed ? 'PASSED' : availability.exhausted ? 'FAILED' : 'IN_PROGRESS';
+    await tx.userActivityProgress.upsert({
+      where: { userId_activityId: { userId, activityId: activity.id } },
+      create: { userId, activityId: activity.id, status, attemptsUsed: 1, completedAt: passed ? now : null, lastActivityAt: now },
+      update: { status, attemptsUsed: { increment: 1 }, ...(passed ? { completedAt: now } : {}), lastActivityAt: now },
     });
     // El examen diagnóstico se guarda, pero no aprueba ni reprueba el módulo.
     if (!activity.isRequired) return { attempt: closed, passed };
 
-    const { percent, complete } = await refreshModulePercent(tx, userId, activity.moduleId);
+    const modulePercent = await refreshModulePercent(tx, userId, activity.moduleId);
+    const { percent, complete } = modulePercent;
     const moduleProgress = await findModuleProgress(tx, userId, activity.moduleId);
     if (complete && moduleProgress?.status !== 'PASSED') {
-      await completeModule(tx, userId, activity.moduleId, attemptId, now);
+      await completeModule(tx, userId, activity.moduleId, attemptId, now, modulePercent);
     } else {
       await upsertModuleProgress(tx, userId, activity.moduleId, {
         status: moduleProgress?.status === 'PASSED' ? 'PASSED' : (!passed && availability.exhausted ? 'FAILED' : 'IN_PROGRESS'),

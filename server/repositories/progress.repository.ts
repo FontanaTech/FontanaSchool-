@@ -69,9 +69,29 @@ export function findModuleProgress(db: Db, userId: string, moduleId: string) {
   return db.userModuleProgress.findUnique({ where: { userId_moduleId: { userId, moduleId } } });
 }
 
-// Bloqueo de fila para serializar operaciones del mismo usuario sobre la misma actividad.
-export async function lockActivityProgress(db: Db, userId: string, activityId: string): Promise<void> {
-  await db.$queryRaw`SELECT id FROM induccion.progreso_actividad WHERE user_id = ${userId}::uuid AND activity_id = ${activityId}::uuid FOR UPDATE`;
+// Bloqueo de fila para serializar operaciones del mismo usuario sobre la misma actividad. Devuelve la fecha de inicio
+// ya con la fila bloqueada (en la misma consulta), para no tener que volver a leerla.
+export async function lockActivityProgress(db: Db, userId: string, activityId: string): Promise<{ startedAt: Date | null } | null> {
+  const rows = await db.$queryRaw<{ started_at: Date | null }[]>`SELECT started_at FROM induccion.progreso_actividad WHERE user_id = ${userId}::uuid AND activity_id = ${activityId}::uuid FOR UPDATE`;
+  return rows[0] ? { startedAt: rows[0].started_at } : null;
+}
+
+// Módulos de los sellos activos del asesor (sin cargar el módulo: una sola consulta).
+export async function activeSealModuleIds(db: Db, userId: string): Promise<string[]> {
+  const rows = await db.seal.findMany({ where: { userId, status: 'ACTIVE' }, select: { moduleId: true } });
+  return rows.map((row) => row.moduleId);
+}
+
+// Lo mismo que dependentsOf (módulos que dependen de `moduleId` con todos sus prerrequisitos) en una sola consulta:
+// Prisma pide cada relación incluida con un viaje aparte a la base.
+export async function dependentsWithPrerequisites(db: Db, moduleId: string): Promise<{ id: string; slug: string; prerequisites: { prerequisiteModuleId: string }[] }[]> {
+  const rows = await db.$queryRaw<{ id: string; slug: string; prerequisites: string[] }[]>`
+    SELECT m."id", m."slug", array_agg(p2."prerequisite_module_id"::text) AS "prerequisites"
+    FROM induccion.modulos_formacion m
+    JOIN induccion.prerrequisitos_modulo p2 ON p2."module_id" = m."id"
+    WHERE EXISTS (SELECT 1 FROM induccion.prerrequisitos_modulo p1 WHERE p1."module_id" = m."id" AND p1."prerequisite_module_id" = ${moduleId}::uuid)
+    GROUP BY m."id", m."slug"`;
+  return rows.map((row) => ({ id: row.id, slug: row.slug, prerequisites: row.prerequisites.map((prerequisiteModuleId) => ({ prerequisiteModuleId })) }));
 }
 
 // Módulos que dependen de `moduleId` junto con todos sus prerrequisitos.

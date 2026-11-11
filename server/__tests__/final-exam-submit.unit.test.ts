@@ -8,6 +8,8 @@ vi.mock('../services/progress.service.js', () => ({loadSnapshot:async()=>({
   views:[{slug:'examen-general',moduleId:'module',enabled:true}],
   modules:[{id:'module',activities:[{id:'activity',type:'QUIZ',status:'ACTIVE'}]}],
   evaluations:new Map([['activity',{minimumScore:80}]]),
+  // El usuario llega en la misma consulta del estado de formación.
+  user:await mocks.tx.usuario.findUnique(),
 })}));
 vi.mock('../domain/final-exam.js', async (original) => ({...await original<any>(),gradeFinalExam:mocks.grade}));
 vi.mock('../services/attempt.service.js', () => ({startAttemptTx:vi.fn(),submitAttemptTx:mocks.submit}));

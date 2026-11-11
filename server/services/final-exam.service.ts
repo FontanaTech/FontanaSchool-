@@ -19,11 +19,9 @@ import { certifyAfterFinalExam } from './automatic-certification.service.js';
 // en el intento (con su orden); cada respuesta se guarda al marcarla; al enviar califica el servidor con el banco.
 
 async function access(db: Db, userId: string) {
-  // El usuario (siempre un asesor: la ruta exige el rol) y su estado de formación se consultan a la vez.
-  const [user, snapshot] = await Promise.all([
-    db.usuario.findUnique({ where: { id: userId }, select: { rol: true, estado: true } }),
-    loadSnapshot(db, userId),
-  ]);
+  // El usuario (siempre un asesor: la ruta exige el rol) llega junto con su estado de formación: una sola consulta.
+  const snapshot = await loadSnapshot(db, userId);
+  const { user } = snapshot;
   if (!user || user.rol !== 'asesor' || user.estado !== 'activo') throw new ForbiddenError('Este examen es para asesores activos.');
   const view = snapshot.views.find((item) => item.slug === FINAL_EXAM_SLUG);
   if (!view) throw new NotFoundError('El examen general no está configurado.', 'MODULE_NOT_FOUND');
