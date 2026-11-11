@@ -318,3 +318,7 @@ body.auth-login {
 .desktop-update__button:hover:not(:disabled) { background: #f3d27a1a; }
 .desktop-update__button:disabled { opacity: .6; cursor: progress; }
 .desktop-update__status { margin: 0; font-size: 13px; color: #d7deea; min-height: 1em; }
+/* Versión nueva detectada al abrir: el botón resalta para que el asesor la instale. */
+.desktop-update--available .desktop-update__button { background: #f3d27a; color: #5b0f26; border-color: #f3d27a; }
+.desktop-update--available .desktop-update__button:hover:not(:disabled) { background: #f7df9d; }
+.desktop-update--available .desktop-update__status { color: #fdf3dc; }

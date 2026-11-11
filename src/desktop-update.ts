@@ -24,13 +24,27 @@ export function mountDesktopUpdate(card: HTMLElement): void {
   card.append(box);
   const button = box.querySelector<HTMLButtonElement>('button')!;
   const status = box.querySelector<HTMLElement>('.desktop-update__status')!;
-  void api.info().then(({ runtime, updated }) => {
-    const installed = runtime ? `Versión instalada: ${date(runtime.builtAt)}` : '';
+  let pending: Check | null = null;
+  const showAvailable = (check: Check) => {
+    const notes = check.latest!.notes.split('\n').filter(Boolean).slice(-1)[0] ?? '';
+    status.innerHTML = `<strong>Hay una versión nueva</strong> del ${text(date(check.latest!.publishedAt))}${notes ? `: ${text(notes)}` : ''}.`;
+    button.textContent = `⬇ Descargar e instalar (${Math.round(check.latest!.size / 1024 / 1024)} MB)`;
+    box.classList.add('desktop-update--available');
+  };
+
+  void api.info().then(async ({ runtime, updated }) => {
+    // La versión y la fecha permiten comprobar, equipo por equipo, cuál tiene instalada.
+    const installed = runtime ? `Versión instalada: ${runtime.version} · ${date(runtime.builtAt)}` : '';
     // Tras reiniciarse por una actualización, la aplicación lo confirma una vez.
     status.textContent = updated ? `✔ Actualización correcta. ${installed}` : installed;
+    // Búsqueda automática al abrir la aplicación (una vez): si hay versión nueva, se ofrece sin que el asesor la
+    // busque. Si GitHub no responde (sin internet o límite de consultas), queda el botón para buscar a mano.
+    try {
+      const check = await api.checkUpdate();
+      if (check.available && !pending) { pending = check; showAvailable(check); }
+    } catch { /* se puede buscar con el botón */ }
   }).catch(() => undefined);
 
-  let pending: Check | null = null;
   button.addEventListener('click', async () => {
     button.disabled = true;
     try {
@@ -41,9 +55,7 @@ export function mountDesktopUpdate(card: HTMLElement): void {
           status.textContent = pending.message ?? `Ya tienes la última versión (${date(pending.current?.builtAt)}).`;
           return;
         }
-        const notes = pending.latest!.notes.split('\n').filter(Boolean).slice(-1)[0] ?? '';
-        status.innerHTML = `Hay una versión nueva del ${text(date(pending.latest!.publishedAt))}${notes ? `: ${text(notes)}` : ''}.`;
-        button.textContent = `⬇ Descargar e instalar (${Math.round(pending.latest!.size / 1024 / 1024)} MB)`;
+        showAvailable(pending);
         return;
       }
       const stop = api.onProgress(({ stage, percent }) => { status.textContent = `${stage} ${percent ? `${percent} %` : ''}`; });

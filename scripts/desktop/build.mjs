@@ -153,6 +153,15 @@ if (publish) {
   }
   if (!token) throw new Error('No se encontró la sesión de GitHub de git en este equipo.');
   const headers = { Authorization: `Bearer ${token}`, Accept: 'application/vnd.github+json', 'User-Agent': 'FontanaSchool-Build' };
+  // Un commit se publica una sola vez: si ya existe su versión (por ejemplo, publicada desde un equipo mientras
+  // GitHub Actions estaba en cola), no se crea otra igual que las aplicaciones verían como «actualización».
+  const existing = await fetch(`https://api.github.com/repos/${REPO}/releases?per_page=30`, { headers });
+  const already = existing.ok ? (await existing.json()).find((item) => String(item.tag_name).startsWith('desktop-') && String(item.tag_name).endsWith(`-${sha.slice(0, 7)}`)) : null;
+  if (already) {
+    console.log(`\n✔ Este commit ya estaba publicado (${already.tag_name}): no se crea otra versión.`);
+    console.log(`\nArchivos de trabajo en ${work}`);
+    process.exit(0);
+  }
   const subject = git('log', '-1', '--pretty=%s');
   const created = await fetch(`https://api.github.com/repos/${REPO}/releases`, {
     method: 'POST', headers: { ...headers, 'Content-Type': 'application/json' },
