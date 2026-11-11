@@ -142,4 +142,16 @@ export const DICTATIONS: SeedDictation[] = [
     expectedText: 'El cliente dice que debe haber un error en el saldo porque ya realizó el pago. Quedó pendiente enviar el soporte por correo. Si no llega el lunes, se pasará el caso al supervisor. Hay que confirmar la fecha del acuerdo. Se dejó la observación registrada para que el equipo la revise mañana temprano.',
     criticalRuleKeys: ['homofona-a-ver-haber', 'homofona-porque', 'homofona-hay-ahi-ay'],
   },
+  // Siguen activos en la base de producción con su audio en storage/: si se quitan de aquí, el seed los pasa a borrador
+  // y, si además se borra el audio, el dictado falla con «Este ejercicio todavía no tiene audio autorizado».
+  {
+    key: 'dictado-soporte-pago', title: 'Observación: soporte del pago', difficulty: 2,
+    expectedText: 'Ahí está el soporte del pago que hizo el cliente. No pagó el martes sino el miércoles, por eso quedó en mora. Él confirmó que sí puede pagar el resto el viernes. Tú debes registrar la observación hoy. El cliente agradeció la llamada y pidió que le enviemos un resumen del acuerdo por mensaje.',
+    criticalRuleKeys: ['homofona-hay-ahi-ay', 'homofona-sino-si-no', 'tilde-el', 'tilde-si', 'tilde-tu'],
+  },
+  {
+    key: 'dictado-seguimiento', title: 'Observación: seguimiento de la llamada', difficulty: 3,
+    expectedText: 'Dijiste que el cliente fue claro: hubo muchas personas en la llamada. A ver si hoy llega el soporte. Es posible que haya un error en el registro, pero ya está hecho. ¿Por qué no contestó? Se volverá a llamar mañana. El cliente prometió enviar el comprobante antes de las cinco de la tarde.',
+    criticalRuleKeys: ['verbal-dijiste', 'verbal-hubo', 'homofona-a-ver-haber', 'verbal-haya', 'homofona-hecho-echo', 'homofona-porque'],
+  },
 ];

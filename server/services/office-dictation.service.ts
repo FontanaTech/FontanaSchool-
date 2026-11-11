@@ -46,11 +46,33 @@ async function dictationActivityId(tx: Tx | typeof prisma): Promise<string> {
 export const isPlayable = (exercise: { status: string; audioKey: string | null }): boolean =>
   exercise.status === 'ACTIVE' && (Boolean(exercise.audioKey) || env.DICTATION_DEV_TTS);
 
+// El audio del ejercicio está en ESTE equipo. La base puede apuntar a un archivo que la instalación no trae: el
+// 2026-11-11 se borraron del repositorio dos audios que la base seguía usando y, en los equipos que se actualizaron,
+// el dictado respondía «Este ejercicio todavía no tiene audio autorizado».
+export async function audioAvailableHere(exercise: { audioKey: string | null }): Promise<boolean> {
+  return Boolean(exercise.audioKey) && await getStorage().exists(exercise.audioKey!);
+}
+
+// Se puede presentar en este equipo: activo y con su audio aquí (o, solo en desarrollo, la voz de prueba).
+async function playableHere(exercise: { status: string; audioKey: string | null }): Promise<boolean> {
+  return isPlayable(exercise) && (env.DICTATION_DEV_TTS || await audioAvailableHere(exercise));
+}
+
 async function latestExercises(db: Tx | typeof prisma) {
   const rows = await db.dictationExercise.findMany({ where: { status: 'ACTIVE' }, orderBy: [{ key: 'asc' }, { version: 'desc' }] });
   const latest = new Map<string, (typeof rows)[number]>();
   for (const row of rows) if (!latest.has(row.key)) latest.set(row.key, row);
-  return [...latest.values()].filter(isPlayable);
+  const checked = await Promise.all([...latest.values()].map(async (row) => ((await playableHere(row)) ? row : null)));
+  return checked.filter((row): row is NonNullable<typeof row> => row !== null);
+}
+
+// Uno que el asesor no haya hecho (al azar) o, si ya hizo todos, el que hizo hace más tiempo.
+function pickExercise<T extends { key: string }>(candidates: T[], used: { exercise: { key: string } }[]): T | null {
+  if (candidates.length === 0) return null;
+  const lastUse = new Map<string, number>();
+  used.forEach((row, index) => lastUse.set(row.exercise.key, index));
+  const unused = candidates.filter((item) => !lastUse.has(item.key));
+  return unused.length ? unused[randomInt(unused.length)]! : [...candidates].sort((a, b) => lastUse.get(a.key)! - lastUse.get(b.key)!)[0]!;
 }
 
 // Ejercicio para el asesor: el de su intento abierto o el menos usado. Si quien llama ya conoce la actividad del
@@ -65,13 +87,25 @@ export async function nextExercise(userId: string, db: Tx | typeof prisma = pris
     latestExercises(db),
     db.dictationAttemptResult.findMany({ where: { attempt: { userId } }, select: { exercise: { select: { key: true } } }, orderBy: { startedAt: 'asc' } }),
   ]);
-  if (open) return { exercise: open.exercise, attemptId: open.attemptId };
-  if (candidates.length === 0) return null;
-  const lastUse = new Map<string, number>();
-  used.forEach((row, index) => lastUse.set(row.exercise.key, index));
-  const unused = candidates.filter((item) => !lastUse.has(item.key));
-  const exercise = unused.length ? unused[randomInt(unused.length)]! : [...candidates].sort((a, b) => lastUse.get(a.key)! - lastUse.get(b.key)!)[0]!;
-  return { exercise, attemptId: null };
+  if (open) {
+    // Intento abierto con un ejercicio cuyo audio no está en este equipo: si todavía no lo escuchó, se cambia por uno
+    // que sí suene (el intento y su cupo no cambian). Condicionado: nunca pisa una reproducción ni otro cambio.
+    if (open.playsUsed === 0 && !env.DICTATION_DEV_TTS && !(await audioAvailableHere(open.exercise))) {
+      const replacement = pickExercise(candidates, used);
+      if (replacement) {
+        const swapped = await db.dictationAttemptResult.updateMany({
+          where: { attemptId: open.attemptId, exerciseId: open.exerciseId, playsUsed: 0 },
+          data: { exerciseId: replacement.id, exerciseVersion: replacement.version, expectedText: replacement.expectedText },
+        });
+        if (swapped.count) return { exercise: replacement, attemptId: open.attemptId };
+        const current = await db.dictationAttemptResult.findUnique({ where: { attemptId: open.attemptId }, include: { exercise: true } });
+        if (current) return { exercise: current.exercise, attemptId: open.attemptId };
+      }
+    }
+    return { exercise: open.exercise, attemptId: open.attemptId };
+  }
+  const exercise = pickExercise(candidates, used);
+  return exercise ? { exercise, attemptId: null } : null;
 }
 
 export async function describeNext(userId: string, knownActivityId?: string) {
@@ -97,7 +131,8 @@ export async function startDictation(userId: string, exerciseId: string, now = n
     await tx.userActivityProgress.upsert({ where: { userId_activityId: { userId, activityId } }, create: { userId, activityId, status: 'AVAILABLE' }, update: {} });
     await lockActivityProgress(tx, userId, activityId);
     const exercise = await tx.dictationExercise.findUnique({ where: { id: exerciseId } });
-    if (!exercise || !isPlayable(exercise)) throw new NotFoundError('El ejercicio no está disponible.', 'DICTATION_NOT_FOUND');
+    // Nunca se abre un dictado que este equipo no puede reproducir.
+    if (!exercise || !(await playableHere(exercise))) throw new NotFoundError('El ejercicio no está disponible.', 'DICTATION_NOT_FOUND');
     const { attempt, resumed } = await startAttemptTx(tx, userId, activityId, { now });
     const config = snapshotOf(await activeConfig(tx));
     let result = resumed ? await tx.dictationAttemptResult.findUnique({ where: { attemptId: attempt.id } }) : null;
