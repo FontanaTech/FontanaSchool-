@@ -65,7 +65,7 @@ export const GUIDED_BLOCKS = {
       { key: 'registro', title: 'Tipifica la situación', short: 'Elige el resultado de la gestión.' },
       { key: 'registro', title: 'Tipifica la situación', short: 'Elige el resultado de la gestión.' },
     ],
-    doneTitle: '¡Seis casos completados!', doneText: 'Identificaste correctamente el resultado de cada gestión.', nextLabel: 'Continuar al examen final →',
+    doneTitle: '¡Seis casos completados!', doneText: 'Identificaste correctamente el resultado de cada gestión.', nextLabel: 'Ver resultado y sello →',
   },
 } as const;
 export type GuidedBlockKey = keyof typeof GUIDED_BLOCKS;

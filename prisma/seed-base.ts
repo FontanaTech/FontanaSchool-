@@ -227,4 +227,9 @@ export async function seedOfficeModule(prisma: PrismaClient, moduleId: string): 
       update: {},
     });
   }
+  const seededDictationKeys = DICTATIONS.map((exercise) => exercise.key);
+  await prisma.dictationExercise.updateMany({
+    where: { key: { notIn: seededDictationKeys } },
+    data: { status: 'DRAFT', audioKey: null, audioDurationSeconds: null },
+  });
 }
