@@ -42,9 +42,21 @@ export function shouldKeepWarm(now: number, lastActivity = lastActivityAt): bool
   return now - lastActivity <= ACTIVE_WINDOW_MS;
 }
 
+let lastWarmAt = 0;
+
 // Abre (o mantiene) varias conexiones a la vez: consultas simultáneas usan conexiones distintas del pool.
 export async function warmConnections(count = WARM_CONNECTIONS): Promise<void> {
+  lastWarmAt = Date.now();
   await Promise.all(Array.from({ length: count }, () => prisma.$queryRaw`SELECT 1`));
+}
+
+// El asesor está frente a la pantalla (mueve el ratón, escribe, desplaza): aunque no haga clic, cuenta como
+// actividad. Si las conexiones llevan más de 4 minutos sin usarse (por ejemplo, volvió de una pausa larga), se
+// reabren ya, en segundo plano, para que su siguiente «Continuar» no espere la reconexión.
+export function noteUserPresence(now = Date.now()): void {
+  const wasIdle = !shouldKeepWarm(now);
+  markDatabaseActivity(now);
+  if (wasIdle || now - lastWarmAt >= KEEP_WARM_EVERY_MS) void warmConnections().catch(() => undefined);
 }
 
 // Al arrancar se abren las conexiones de una vez (mientras se ve el inicio de sesión) y luego se mantienen.

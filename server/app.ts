@@ -20,7 +20,7 @@ import { mountWebView } from './views/web.view.js';
 import compression from 'compression';
 import { publishChange } from './realtime/admin-live.js';
 import { clearSessionCache } from './services/session-cache.js';
-import { markDatabaseActivity } from './config/prisma.js';
+import { markDatabaseActivity, noteUserPresence } from './config/prisma.js';
 
 const currentDirectory = path.dirname(fileURLToPath(import.meta.url));
 const projectRoot = path.resolve(currentDirectory, '..');
@@ -49,6 +49,9 @@ app.use('/api', (request, response, next) => {
   next();
 });
 
+// Presencia del asesor: el navegador avisa cuando hay movimiento del ratón o del teclado (ver src/activity-heartbeat.ts).
+// No consulta la base ni devuelve datos: solo mantiene (o reabre) las conexiones mientras el asesor lee.
+app.get('/api/activity', (_request, response) => { noteUserPresence(); response.status(204).end(); });
 app.use('/api/health', healthRouter);
 app.use('/api/auth', authRouter);
 app.use('/api/advisor', advisorRouter);
