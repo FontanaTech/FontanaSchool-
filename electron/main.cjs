@@ -15,7 +15,7 @@ const path = require('node:path');
 const os = require('node:os');
 const { execFile } = require('node:child_process');
 
-const REPO = 'JUANESTEBANORTIZRENDON/Aplicativo-FontanaSchoolGuide';
+const REPO = 'FontanaTech/FontanaSchool-';
 const RELEASE_PREFIX = 'desktop-';
 const ASSET_PREFIX = 'fontana-runtime-';
 const PORT = 3087;
