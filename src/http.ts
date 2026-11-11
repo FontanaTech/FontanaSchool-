@@ -8,25 +8,49 @@ export function escapar(value: string | number | null | undefined): string {
   return String(value ?? '').replace(/[&<>"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char]!);
 }
 
+// Ninguna petición queda esperando para siempre: el servidor responde o falla antes (sus transacciones más largas
+// tienen 60 s), así que pasado este tiempo algo se cortó en la red y la pantalla de carga debe soltarse.
+export const API_TIMEOUT_MS = 90_000;
+// Las lecturas (GET) no cambian nada: ante un corte momentáneo se reintentan una vez antes de mostrar el error.
+const READ_RETRY_DELAY_MS = 800;
+
+const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
 // Cliente de la API: mismo origen, JSON y errores con el mensaje del servidor.
 export async function api<T>(path: string, options: RequestInit = {}): Promise<T> {
   const unavailable = 'No se pudo conectar con el servidor. Verifica que Fontana School esté iniciado e intenta nuevamente.';
-  let response: Response;
-  try {
-    response = await fetch(`/api${path}`, {
-      ...options,
-      credentials: 'same-origin',
-      headers: { 'Content-Type': 'application/json', ...options.headers },
-    });
-  } catch {
-    throw new ApiError(unavailable, 0);
+  const tooSlow = 'La conexión está tardando más de lo normal. Revisa tu conexión a internet e intenta nuevamente.';
+  const isRead = (options.method ?? 'GET').toUpperCase() === 'GET';
+  let response!: Response;
+  let text = '';
+  for (let attempt = 1; ; attempt += 1) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), API_TIMEOUT_MS);
+    try {
+      response = await fetch(`/api${path}`, {
+        ...options,
+        signal: options.signal ?? controller.signal,
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json', ...options.headers },
+      });
+      // 503: la base no respondió a tiempo (por ejemplo, una conexión que se cayó); una lectura se puede repetir.
+      if (isRead && attempt === 1 && response.status === 503) { await wait(READ_RETRY_DELAY_MS); continue; }
+      if (response.status === 204) return undefined as T;
+      if (response.status === 401 && path !== '/auth/login' && path !== '/auth/me') {
+        location.assign('/login');
+        throw new ApiError('Tu sesión venció. Inicia sesión nuevamente para continuar.', 401);
+      }
+      text = await response.text();
+      break;
+    } catch (error) {
+      if (error instanceof ApiError) throw error;
+      if (controller.signal.aborted) throw new ApiError(tooSlow, 0, 'TIMEOUT');
+      if (isRead && attempt === 1) { await wait(READ_RETRY_DELAY_MS); continue; }
+      throw new ApiError(unavailable, 0);
+    } finally {
+      clearTimeout(timer);
+    }
   }
-  if (response.status === 204) return undefined as T;
-  if (response.status === 401 && path !== '/auth/login' && path !== '/auth/me') {
-    location.assign('/login');
-    throw new ApiError('Tu sesión venció. Inicia sesión nuevamente para continuar.', 401);
-  }
-  const text = await response.text();
   let body: unknown;
   try {
     body = JSON.parse(text);
