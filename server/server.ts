@@ -8,6 +8,20 @@ import { captureConsole } from './diagnostics/log-buffer.js';
 // Lo que el servidor escribe en la consola también queda en el panel de logs de la aplicación (Ctrl + Shift + L).
 captureConsole();
 
+// Guardas a nivel de proceso (tras captureConsole, para que su salida quede también en el panel de logs). No
+// ocultan errores: los dejan registrados.
+// - Una excepción no capturada deja el proceso en estado dudoso: se cierra de forma ordenada. En la aplicación de
+//   escritorio, el supervisor de Electron lo vuelve a levantar; bajo un administrador de procesos, también.
+// - Una promesa rechazada sin manejar se registra para corregir su origen, pero no tumba al servidor: así los
+//   demás asesores conectados conservan su sesión (Node, por defecto, terminaría el proceso).
+process.on('uncaughtException', (error) => {
+  console.error(JSON.stringify({ event: 'uncaught_exception', error: error instanceof Error ? error.stack ?? error.message : String(error) }));
+  void disconnect().catch(() => undefined).finally(() => process.exit(1));
+});
+process.on('unhandledRejection', (reason) => {
+  console.error(JSON.stringify({ event: 'unhandled_rejection', error: reason instanceof Error ? reason.stack ?? reason.message : String(reason) }));
+});
+
 // Las conexiones a la base se abren de una vez al arrancar (en paralelo, mientras se ve el inicio de sesión) y se
 // mantienen abiertas mientras el asesor trabaja. Ver keepConnectionsWarm.
 keepConnectionsWarm();

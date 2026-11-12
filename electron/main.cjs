@@ -23,6 +23,13 @@ const PORT = 3087;
 let server = null;
 let mainWindow = null;
 let serverLog = '';
+// Supervisión del servidor: `stopping` evita reiniciarlo cuando el cierre o una actualización lo detienen a
+// propósito; `appReady` marca que la ventana ya cargó la aplicación (antes de eso, el arranque maneja los fallos);
+// `serverStarts` guarda las marcas de tiempo de los reinicios recientes para frenar un ciclo de caídas.
+let stopping = false;
+let appReady = false;
+let activeRuntimeDir = null;
+let serverStarts = [];
 
 if (!app.requestSingleInstanceLock()) app.quit();
 
@@ -74,7 +81,9 @@ function readUpdatedMarker() {
 }
 
 // Cierra el servidor y espera a que termine (máximo 3 s) para dejar libre el puerto a la siguiente instancia.
+// Marca `stopping` para que el supervisor no lo vuelva a levantar: esta parada es intencional.
 function stopServer() {
+  stopping = true;
   return new Promise((resolve) => {
     if (!server) { resolve(); return; }
     const timer = setTimeout(resolve, 3000);
@@ -127,7 +136,9 @@ async function waitForServer(timeoutMs = 90_000) {
   while (Date.now() - started < timeoutMs) {
     if (!server) throw new Error('El servidor se detuvo al iniciar.');
     try {
-      const response = await net.fetch(`http://localhost:${PORT}/api/health`);
+      // Con límite por intento: si una comprobación se cuelga (base de datos en la nube sin responder), no
+      // deja la espera bloqueada indefinidamente y el tope general de tiempo sí se respeta.
+      const response = await net.fetch(`http://localhost:${PORT}/api/health`, { signal: AbortSignal.timeout(2500) });
       if (response.ok) return;
     } catch { /* aún no responde */ }
     await new Promise((resolve) => setTimeout(resolve, 500));
@@ -136,6 +147,7 @@ async function waitForServer(timeoutMs = 90_000) {
 }
 
 function startServer(runtime) {
+  activeRuntimeDir = runtime.dir;
   const env = {
     ...process.env,
     ...parseEnv(fs.readFileSync(envFile(), 'utf8')),
@@ -149,7 +161,35 @@ function startServer(runtime) {
   const keep = (chunk) => { serverLog = (serverLog + chunk.toString()).slice(-6000); };
   server.stdout?.on('data', keep);
   server.stderr?.on('data', keep);
-  server.on('exit', () => { server = null; });
+  server.on('exit', (code) => {
+    server = null;
+    // Caída inesperada con la aplicación ya abierta: se vuelve a levantar el servidor para que el aula no
+    // quede sin backend. El arranque (antes de appReady) tiene su propio manejo y no pasa por aquí.
+    if (!stopping && appReady) superviseRestart(code);
+  });
+}
+
+// Reinicia el servidor tras una caída inesperada, con un tope por ventana de tiempo para no entrar en un ciclo
+// de arranques. Si se supera el tope, se deja de intentar y se avisa en pantalla con la recuperación disponible.
+function superviseRestart(code) {
+  const now = Date.now();
+  serverStarts = serverStarts.filter((at) => now - at < 60_000);
+  if (serverStarts.length >= 5) {
+    serverLog = `${serverLog}\n[escritorio] El servidor se cerró varias veces (último código ${code}). Se detienen los reintentos.`.slice(-6000);
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      void mainWindow.loadURL(splash(`El servidor no se mantuvo estable.\nCierra y vuelve a abrir Fontana School.\n\n${serverLog.slice(-1500)}`));
+    }
+    return;
+  }
+  serverStarts.push(now);
+  setTimeout(() => {
+    if (stopping || server) return;
+    try {
+      startServer({ dir: activeRuntimeDir });
+    } catch (error) {
+      serverLog = `${serverLog}\n[escritorio] No se pudo reiniciar el servidor: ${error.message}`.slice(-6000);
+    }
+  }, 1000);
 }
 
 async function createWindow() {
@@ -166,6 +206,7 @@ async function createWindow() {
     if (!url.startsWith(`http://localhost:${PORT}`)) { void shell.openExternal(url); return { action: 'deny' }; }
     return { action: 'allow' };
   });
+  attachRendererRecovery(mainWindow);
   const runtime = activeRuntime();
   if (!runtime.manifest) {
     await mainWindow.loadURL(splash('No se encontró la aplicación compilada.\nVuelve a instalar Fontana School.'));
@@ -179,9 +220,46 @@ async function createWindow() {
     startServer(runtime);
     await waitForServer();
     await mainWindow.loadURL(`http://localhost:${PORT}/login`);
+    // Desde aquí el servidor sí se supervisa: una caída posterior se reinicia en vez de dejar el aula sin backend.
+    appReady = true;
+    serverStarts = [];
   } catch (error) {
     await mainWindow.loadURL(splash(`${error.message}\n\n${serverLog.slice(-1500)}`));
   }
+}
+
+// Recupera la ventana cuando el proceso de dibujo (renderer) se cae o la página no carga, en vez de dejar una
+// ventana en blanco. Reintenta cargar la aplicación un número acotado de veces; si el servidor está disponible
+// vuelve sola, y si no, muestra el aviso de inicio con la opción de reintentar. La falta de respuesta pasajera
+// (JavaScript ocupado) solo se registra: Chromium suele recuperarse y recargar cortaría una operación en curso.
+function attachRendererRecovery(window) {
+  const contents = window.webContents;
+  let recoveries = [];
+  const recover = (why) => {
+    // Solo actúa tras el arranque: durante el inicio, createWindow ya maneja los fallos de carga.
+    if (stopping || !appReady || window.isDestroyed()) return;
+    const now = Date.now();
+    recoveries = recoveries.filter((at) => now - at < 60_000);
+    if (recoveries.length >= 3) {
+      void window.loadURL(splash('La aplicación tuvo un problema y no se pudo recuperar sola.\nCierra y vuelve a abrir Fontana School.'));
+      return;
+    }
+    recoveries.push(now);
+    serverLog = `${serverLog}\n[escritorio] Recuperando la interfaz (${why}).`.slice(-6000);
+    void window.loadURL(`http://localhost:${PORT}/login`);
+  };
+  contents.on('render-process-gone', (_event, details) => {
+    if (details.reason === 'clean-exit') return;
+    recover(`renderer: ${details.reason}`);
+  });
+  contents.on('did-fail-load', (_event, code, description, _url, isMainFrame) => {
+    // -3 (ABORTED) ocurre en navegaciones normales encadenadas; no es un fallo real.
+    if (!isMainFrame || code === -3) return;
+    recover(`carga ${code}: ${description}`);
+  });
+  contents.on('unresponsive', () => {
+    serverLog = `${serverLog}\n[escritorio] La interfaz dejó de responder momentáneamente.`.slice(-6000);
+  });
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -282,4 +360,4 @@ app.whenReady().then(() => { routeDownloadsToFolder(); return createWindow(); })
 });
 
 app.on('window-all-closed', () => app.quit());
-app.on('before-quit', () => { if (server) server.kill(); });
+app.on('before-quit', () => { stopping = true; if (server) server.kill(); });
