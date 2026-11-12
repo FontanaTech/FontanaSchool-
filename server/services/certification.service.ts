@@ -66,7 +66,7 @@ export async function listCertifications(filter: { status?: CertificationStatus;
   const users = await prisma.usuario.findMany({ where: { id: { in: ids }, rol: Role.ADVISOR }, select: { id: true, nombreCompleto: true, numeroDocumento: true, tieneExperienciaCobranzasDigitales: true } });
   const progress = await prisma.attempt.groupBy({ by: ['userId'], where: { userId: { in: ids }, submittedAt: { not: null } }, _max: { submittedAt: true } });
   const lastAttempt = new Map(progress.map((row) => [row.userId, row._max.submittedAt]));
-  const rows = users.map((user: AdvisorRow) => {
+  const all = users.map((user: AdvisorRow) => {
     const lastSeal = complete.get(user.id) ?? null;
     const lastProgress = [lastSeal, lastAttempt.get(user.id)].filter((value): value is Date => Boolean(value)).sort((a, b) => b.getTime() - a.getTime())[0] ?? null;
     const state = certificationStatusOf({ requirementsMet: complete.has(user.id), hasActiveCertificate: certificates.has(user.id), lastDecision: decisions.get(user.id) ?? null, lastProgressAt: lastProgress });
@@ -77,12 +77,14 @@ export async function listCertifications(filter: { status?: CertificationStatus;
       completedAt: lastSeal?.toISOString() ?? null,
       certificate: cert ? { id: cert.id, code: cert.code, issuedAt: cert.issuedAt.toISOString() } : null,
     };
-  }).filter((row) => row.status !== 'EN_FORMACION' || decisions.has(row.userId))
-    .filter((row) => !filter.status || row.status === filter.status)
+  }).filter((row) => row.status !== 'EN_FORMACION' || decisions.has(row.userId));
+  // Los contadores del panel cuentan a todos los asesores, sea cual sea la pestaña elegida: antes se contaban después
+  // de filtrar y, en «Pendientes de validación», todos los demás contadores salían en 0 aunque hubiera certificados.
+  const counts = Object.fromEntries((Object.keys(CERTIFICATION_STATUS_LABEL) as CertificationStatus[]).map((status) => [status, all.filter((row) => row.status === status).length]));
+  const rows = all.filter((row) => !filter.status || row.status === filter.status)
     .sort((a, b) => (b.completedAt ?? '').localeCompare(a.completedAt ?? '') || a.userId.localeCompare(b.userId));
   const start = filter.cursor ? rows.findIndex((row) => row.userId === filter.cursor) + 1 : 0;
   const page = rows.slice(start, start + PAGE_SIZE);
-  const counts = Object.fromEntries((Object.keys(CERTIFICATION_STATUS_LABEL) as CertificationStatus[]).map((status) => [status, rows.filter((row) => row.status === status).length]));
   return { items: page, nextCursor: start + PAGE_SIZE < rows.length ? page.at(-1)!.userId : null, counts };
 }
 

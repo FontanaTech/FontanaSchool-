@@ -60,9 +60,15 @@ export async function certificationSection(view: HTMLElement, hash: string, help
 // ---------------------------------------------------------------------------------------------
 // Certificaciones
 
-async function certificationsSection(view: HTMLElement, helpers: Helpers, status: CertStatus | '' = 'PENDIENTE_VALIDACION'): Promise<void> {
-  const query = new URLSearchParams(status ? { status } : {});
-  const { data } = await api<{ data: { items: CertRow[]; nextCursor: string | null; counts: Record<CertStatus, number> } }>(`/admin/certifications?${query}`);
+// Al entrar se muestran las pendientes de validación; si no hay ninguna, se muestran todas para no ver una tabla vacía.
+async function certificationsSection(view: HTMLElement, helpers: Helpers, chosen?: CertStatus | ''): Promise<void> {
+  type CertList = { data: { items: CertRow[]; nextCursor: string | null; counts: Record<CertStatus, number> } };
+  let status: CertStatus | '' = chosen ?? 'PENDIENTE_VALIDACION';
+  let { data } = await api<CertList>(`/admin/certifications?${new URLSearchParams(status ? { status } : {})}`);
+  if (chosen === undefined && !data.counts.PENDIENTE_VALIDACION) {
+    status = '';
+    ({ data } = await api<CertList>('/admin/certifications'));
+  }
   const [pending, certified] = await Promise.all([
     api<{ data: { pendingTotal: number } }>('/admin/reactivation-requests?status=PENDING').then((response) => response.data.pendingTotal),
     status === 'CERTIFICADO' ? Promise.resolve([] as CertRow[]) : api<{ data: { items: CertRow[] } }>('/admin/certifications?status=CERTIFICADO').then((response) => response.data.items),
