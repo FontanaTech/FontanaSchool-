@@ -1,3 +1,5 @@
+import { trackRequest } from './diagnostics.js';
+
 export class ApiError extends Error {
   constructor(message: string, readonly status: number, readonly code?: string, readonly details?: Record<string, unknown>) {
     super(message);
@@ -17,7 +19,23 @@ const READ_RETRY_DELAY_MS = 800;
 const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 // Cliente de la API: mismo origen, JSON y errores con el mensaje del servidor.
+// Cada petición queda en el registro del panel de logs y, mientras dura, cuenta como «en curso» para que el botón
+// «Recargar» no corte un guardado a medias (ver src/recovery-tools.ts).
 export async function api<T>(path: string, options: RequestInit = {}): Promise<T> {
+  const outcome = { status: 0 };
+  const close = trackRequest(options.method ?? 'GET', `/api${path}`);
+  try {
+    const result = await request<T>(path, options, outcome);
+    close(outcome.status);
+    return result;
+  } catch (error) {
+    const status = error instanceof ApiError ? error.status : 0;
+    close(status || (error instanceof ApiError && error.code === 'TIMEOUT' ? 'sin respuesta (tiempo agotado)' : 'sin conexión con el servidor'));
+    throw error;
+  }
+}
+
+async function request<T>(path: string, options: RequestInit, outcome: { status: number }): Promise<T> {
   const unavailable = 'No se pudo conectar con el servidor. Verifica que Fontana School esté iniciado e intenta nuevamente.';
   const tooSlow = 'La conexión está tardando más de lo normal. Revisa tu conexión a internet e intenta nuevamente.';
   const isRead = (options.method ?? 'GET').toUpperCase() === 'GET';
@@ -35,6 +53,7 @@ export async function api<T>(path: string, options: RequestInit = {}): Promise<T
       });
       // 503: la base no respondió a tiempo (por ejemplo, una conexión que se cayó); una lectura se puede repetir.
       if (isRead && attempt === 1 && response.status === 503) { await wait(READ_RETRY_DELAY_MS); continue; }
+      outcome.status = response.status;
       if (response.status === 204) return undefined as T;
       if (response.status === 401 && path !== '/auth/login' && path !== '/auth/me') {
         location.assign('/login');

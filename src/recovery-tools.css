@@ -1,0 +1,152 @@
+/* Botones de recuperación (Recargar y Logs) y panel de registro. Ver src/recovery-tools.ts. */
+.recovery-dock {
+  --recovery-wine: #8b1538;
+  --recovery-gold: #d4af37;
+  --recovery-ink: #1f2a37;
+  --recovery-paper: #fffaf0;
+  position: fixed;
+  left: 14px;
+  bottom: 14px;
+  z-index: 2147483647;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font: 13px/1.4 'Segoe UI', Arial, sans-serif;
+  visibility: visible;
+}
+
+.recovery-dock > button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 32px;
+  padding: 0 11px;
+  border: 1px solid #8b153833;
+  border-radius: 999px;
+  background: #fffaf0e6;
+  color: var(--recovery-wine);
+  box-shadow: 0 4px 14px #1f2a3722;
+  font: 600 13px/1 'Segoe UI', Arial, sans-serif;
+  cursor: pointer;
+  opacity: .72;
+  transition: opacity .15s, transform .15s, background .15s;
+}
+
+.recovery-dock > button:hover,
+.recovery-dock > button:focus-visible { opacity: 1; transform: translateY(-1px); }
+.recovery-dock > button:focus-visible { outline: 3px solid var(--recovery-gold); outline-offset: 2px; }
+.recovery-dock__reload span[aria-hidden] { font-size: 16px; }
+
+/* Mini botón de logs. */
+.recovery-dock__logs.recovery-dock__logs {
+  min-height: 24px;
+  padding: 0 8px;
+  font-size: 11px;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+  opacity: .5;
+}
+
+/* Pantalla detenida: el botón de recargar se resalta. */
+.recovery-dock.is-stuck .recovery-dock__reload {
+  opacity: 1;
+  background: var(--recovery-wine);
+  color: #fff;
+  animation: recovery-pulse 1.6s ease-in-out infinite;
+}
+
+@keyframes recovery-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 #8b153866; }
+  50% { box-shadow: 0 0 0 9px #8b153800; }
+}
+
+/* Diálogo de recarga. */
+.recovery-dialog {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  background: #1f2a3766;
+}
+
+.recovery-dialog[hidden],
+.recovery-logs[hidden] { display: none; }
+
+.recovery-dialog__card {
+  width: min(440px, 100%);
+  padding: 24px;
+  border-radius: 14px;
+  background: var(--recovery-paper);
+  color: var(--recovery-ink);
+  text-align: center;
+  box-shadow: 0 18px 50px #1f2a3755;
+}
+
+.recovery-dialog__card h2 { margin: 0 0 8px; color: var(--recovery-wine); font-size: 19px; }
+.recovery-dialog__text { margin: 0; }
+.recovery-dialog__spinner { display: none; width: 26px; height: 26px; margin: 0 auto 14px; border: 3px solid #d4af3755; border-top-color: var(--recovery-wine); border-radius: 50%; animation: recovery-spin 1s linear infinite; }
+.recovery-dialog.is-waiting .recovery-dialog__spinner { display: block; }
+.recovery-dialog__actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; margin-top: 18px; }
+.recovery-dialog__actions:empty { display: none; }
+
+.recovery-dock button.is-primary { background: var(--recovery-wine); color: #fff; border-color: var(--recovery-wine); }
+
+.recovery-dialog__actions button,
+.recovery-logs__actions button {
+  padding: 8px 14px;
+  border: 1px solid #8b153855;
+  border-radius: 9px;
+  background: #fff;
+  color: var(--recovery-wine);
+  font: 600 13px/1.2 'Segoe UI', Arial, sans-serif;
+  cursor: pointer;
+}
+
+@keyframes recovery-spin { to { transform: rotate(360deg); } }
+
+/* Panel de registro. */
+.recovery-logs {
+  position: fixed;
+  left: 14px;
+  bottom: 56px;
+  display: flex;
+  flex-direction: column;
+  width: min(760px, calc(100vw - 28px));
+  height: min(460px, calc(100vh - 80px));
+  border: 1px solid #8b153833;
+  border-radius: 12px;
+  background: var(--recovery-paper);
+  color: var(--recovery-ink);
+  box-shadow: 0 18px 50px #1f2a3755;
+  overflow: hidden;
+}
+
+.recovery-logs__head { display: flex; align-items: center; gap: 10px; padding: 10px 12px; background: var(--recovery-wine); color: #fff; }
+.recovery-logs__head kbd { padding: 1px 6px; border-radius: 5px; background: #ffffff26; font: 11px/1.6 Consolas, monospace; }
+.recovery-logs__close { margin-left: auto; width: 28px; height: 28px; border: 0; border-radius: 50%; background: transparent; color: #fff; font-size: 20px; line-height: 1; cursor: pointer; }
+.recovery-logs__close:hover { background: #ffffff26; }
+.recovery-logs__meta { margin: 0; padding: 8px 12px 0; font-size: 12px; color: #4b5563; }
+.recovery-logs__filter { display: flex; align-items: center; gap: 6px; padding: 6px 12px; font-size: 12px; }
+.recovery-logs__list {
+  flex: 1;
+  margin: 0 12px;
+  padding: 10px;
+  overflow: auto;
+  border-radius: 8px;
+  background: #1f2a37;
+  color: #e5e7eb;
+  font: 12px/1.5 Consolas, 'Courier New', monospace;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.recovery-logs__actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; padding: 10px 12px; }
+
+@media (prefers-reduced-motion: reduce) {
+  .recovery-dock.is-stuck .recovery-dock__reload,
+  .recovery-dialog__spinner { animation: none; }
+}
+
+@media print {
+  .recovery-dock { display: none !important; }
+}

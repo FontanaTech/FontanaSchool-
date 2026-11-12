@@ -21,6 +21,7 @@ import compression from 'compression';
 import { publishChange } from './realtime/admin-live.js';
 import { clearSessionCache } from './services/session-cache.js';
 import { markDatabaseActivity, noteUserPresence } from './config/prisma.js';
+import { isLoopback, recentLogs, requestLog } from './diagnostics/log-buffer.js';
 
 const currentDirectory = path.dirname(fileURLToPath(import.meta.url));
 const projectRoot = path.resolve(currentDirectory, '..');
@@ -32,6 +33,8 @@ app.disable('x-powered-by');
 // TRUST_PROXY está desactivada por defecto; se activa con el número de saltos del proxy.
 if (env.TRUST_PROXY !== false) app.set('trust proxy', env.TRUST_PROXY);
 app.use(requestId);
+// Registro de peticiones para el panel de logs (Ctrl + Shift + L): ruta, estado y duración, sin datos enviados.
+app.use(requestLog);
 // Comprime respuestas de texto (JSON, HTML, JS, CSS): menos bytes por la red, sobre todo en las pantallas grandes.
 app.use(compression());
 // Toda petición a la API cuenta como actividad: mientras el asesor trabaja, las conexiones a la base se mantienen abiertas.
@@ -52,6 +55,12 @@ app.use('/api', (request, response, next) => {
 // Presencia del asesor: el navegador avisa cuando hay movimiento del ratón o del teclado (ver src/activity-heartbeat.ts).
 // No consulta la base ni devuelve datos: solo mantiene (o reabre) las conexiones mientras el asesor lee.
 app.get('/api/activity', (_request, response) => { noteUserPresence(); response.status(204).end(); });
+// Panel de logs de la aplicación de escritorio (Ctrl + Shift + L): solo existe en escritorio y solo responde al propio
+// equipo (el servidor escucha en todas las interfaces). En la versión web la ruta no existe.
+app.get('/api/diagnostics/logs', (request, response, next) => {
+  if (!env.DESKTOP || !isLoopback(request.socket.remoteAddress)) { next(); return; }
+  response.json({ data: { entries: recentLogs(), uptimeSeconds: Math.round(process.uptime()), node: process.version } });
+});
 app.use('/api/health', healthRouter);
 app.use('/api/auth', authRouter);
 app.use('/api/advisor', advisorRouter);

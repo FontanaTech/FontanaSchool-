@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { API_TIMEOUT_MS, api, ApiError } from './http';
+import { clientLogs, hasPendingWrites } from './diagnostics';
 
 // La pantalla «Guardando tu avance» espera a api(): nunca debe quedarse esperando para siempre.
 const json = (status: number, body: unknown) => new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
@@ -43,5 +44,28 @@ describe('api(): límite de tiempo y reintento de lecturas', () => {
     fetchMock.mockResolvedValueOnce(json(403, { message: 'Completa el bloque anterior para continuar.', code: 'PREVIOUS_BLOCK_REQUIRED' }));
     await expect(api('/training/collections/blocks/caso/complete', { method: 'POST', body: '{}' }))
       .rejects.toMatchObject({ status: 403, code: 'PREVIOUS_BLOCK_REQUIRED', message: 'Completa el bloque anterior para continuar.' });
+  });
+});
+
+describe('api(): registro para el panel de logs y la recarga segura', () => {
+  const fetchMock = vi.fn();
+  beforeEach(() => { fetchMock.mockReset(); vi.stubGlobal('fetch', fetchMock); });
+  afterEach(() => { vi.unstubAllGlobals(); });
+
+  it('un guardado cuenta como «en curso» hasta que responde y queda en el registro', async () => {
+    let answer!: (response: Response) => void;
+    fetchMock.mockReturnValueOnce(new Promise<Response>((resolve) => { answer = resolve; }));
+    const saving = api('/training/collections/blocks/b1/complete', { method: 'POST', body: '{}' });
+    expect(hasPendingWrites()).toBe(true);
+    answer(json(200, { ok: true }));
+    await saving;
+    expect(hasPendingWrites()).toBe(false);
+    expect(clientLogs().at(-1)!.text).toMatch(/^POST \/api\/training\/collections\/blocks\/b1\/complete → 200 · \d+ ms$/);
+  });
+
+  it('un fallo de conexión queda registrado como error', async () => {
+    fetchMock.mockRejectedValue(new TypeError('Failed to fetch'));
+    await expect(api('/training/x', { method: 'POST', body: '{}' })).rejects.toBeInstanceOf(ApiError);
+    expect(clientLogs().at(-1)).toMatchObject({ level: 'error', text: expect.stringContaining('sin conexión con el servidor') });
   });
 });

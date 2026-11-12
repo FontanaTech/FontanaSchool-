@@ -3,6 +3,10 @@ import { disconnect, keepConnectionsWarm } from './config/prisma.js';
 import { app } from './app.js';
 import { attachAdminLive } from './realtime/admin-live.js';
 import { existeAdministrador } from './services/bootstrap-admin.service.js';
+import { captureConsole } from './diagnostics/log-buffer.js';
+
+// Lo que el servidor escribe en la consola también queda en el panel de logs de la aplicación (Ctrl + Shift + L).
+captureConsole();
 
 // Las conexiones a la base se abren de una vez al arrancar (en paralelo, mientras se ve el inicio de sesión) y se
 // mantienen abiertas mientras el asesor trabaja. Ver keepConnectionsWarm.

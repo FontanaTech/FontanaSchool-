@@ -13,7 +13,7 @@
     <style>
       html.app-loading { background: #f7efdf; }
       html.app-loading body { margin: 0; overflow: hidden; }
-      html.app-loading body > :not(#app-loader) { visibility: hidden; }
+      html.app-loading body > :not(#app-loader):not(#recovery-dock) { visibility: hidden; }
       #app-loader { position: fixed; inset: 0; z-index: 2147483647; display: grid; place-items: center; background: radial-gradient(ellipse at 50% 30%, #d4af3720, transparent 65%), #f7efdf; color: #1f2a37; text-align: center; font: 15px/1.6 'Segoe UI', Arial, sans-serif; }
       #app-loader[hidden] { display: none !important; }
       #app-loader img { display: block; width: 76px; height: 76px; object-fit: contain; margin: 0 auto 18px; }
