@@ -294,6 +294,8 @@ export async function iniciarInterfaz(): Promise<void> {
   if (location.pathname !== route && location.pathname !== '/app' && !reviewing && !advisorSubroute && !officeRoute) { location.replace(route); return; }
   if (route === '/admin') { await admin(usuario); await revealApp(); return; }
   if (route === '/llena-tus-datos') { llenaTusDatos(usuario); await revealApp(); return; }
+  // Asesor con el perfil completo: vigilamos la reactivación de Karol para llevarlo solo a la actividad que reactive.
+  void import('./reactivation-watch').then(({ startReactivationWatch }) => startReactivationWatch());
   if (officeRoute) {
     const { mountOffice } = await import('./office/office');
     await mountOffice(usuario.nombreCompleto, (officeMatch![1] as import('./office/api').SectionKey | undefined) ?? null, route);

@@ -78,13 +78,19 @@ export async function mountCollections(container: HTMLElement, backHref: string)
       state = (await api<{ data: State }>(`${BASE}/blocks/${block.key}/complete`, { method: 'POST', body: JSON.stringify({}) })).data;
       const next = state.blocks[state.blocks.findIndex((item) => item.key === block.key) + 1];
       selected = next?.enabled ? next.key : block.key;
-      saving = false;
       if (!wasComplete && state.complete) {
-        await playSeal({ moduleName: 'Inducción a las cobranzas', moduleNumber: 2, label: 'COMPLETADO', nextName: 'Enfréntate a la objeción' });
+        // Módulo completado. El servidor ya persistió el avance (por eso `state.complete`): solo entonces se otorga el sello.
+        // La carga se retira POR COMPLETO antes de presentar el sello. Su overlay tiene mayor z-index (10000) que el sello
+        // (1200); si coexistieran, taparía el botón «Continuar» y la pantalla quedaría congelada. Se mantiene `saving` activo
+        // durante toda la transición para que un segundo clic no dispare otro envío ni un segundo sello; al terminar se navega
+        // (recarga completa de la ruta) y con ello se limpian eventos, temporizadores y animaciones de esta pantalla.
         setSavingScreen(false);
+        if (!container.isConnected) return; // el asesor salió del módulo durante el guardado: el avance quedó persistido, no mostramos el sello ni forzamos navegación
+        await playSeal({ moduleName: 'Inducción a las cobranzas', moduleNumber: 2, label: 'COMPLETADO', nextName: 'Enfréntate a la objeción' });
         window.location.assign(backHref);
         return;
       }
+      saving = false;
       setSavingScreen(false);
       render(); focus('block-title');
     } catch (cause) {

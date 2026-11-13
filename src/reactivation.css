@@ -32,6 +32,7 @@
 .eval-notice__note { display: grid; gap: 6px; font-size: 0.86rem; color: var(--muted, #626672); margin-bottom: 10px; }
 .eval-notice__note textarea { font: inherit; padding: 8px 10px; border-radius: 10px; border: 1px solid var(--line, #e5e7ed); resize: vertical; }
 .eval-notice__error { color: var(--red, #8b1538); font-weight: 600; }
+.eval-retry-status { margin: 0 0 10px; }
 .eval-notice__button { width: auto; }
 .eval-retry-actions { display: flex; justify-content: center; flex-wrap: wrap; gap: 12px; margin-top: 20px; }
 .eval-retry-actions button { min-height: 44px; padding: 12px 18px; border: 1px solid #c6a257; border-radius: 12px; background: #fffaf0; color: #70112c; cursor: pointer; font: 600 15px/1.5 'DM Sans', 'Segoe UI', sans-serif; }

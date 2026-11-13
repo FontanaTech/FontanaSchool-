@@ -1,0 +1,43 @@
+/* Aviso breve del aula (p. ej. «Actividad reactivada»). Ligero y discreto; se anuncia por lectores de pantalla. */
+.aula-toasts {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 24px;
+  z-index: 30000;
+  display: grid;
+  justify-items: center;
+  gap: 10px;
+  padding: 0 16px;
+  pointer-events: none;
+}
+.aula-toast {
+  pointer-events: auto;
+  box-sizing: border-box;
+  max-width: min(460px, 100%);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 13px 18px;
+  border-radius: 14px;
+  border: 1px solid #d4af37;
+  background: #fffdf8;
+  color: #1f2a37;
+  box-shadow: 0 16px 48px #1f2a3730;
+  font: 600 15px/1.45 'DM Sans', 'Segoe UI', sans-serif;
+  opacity: 0;
+  transform: translateY(12px);
+  transition: opacity .28s ease, transform .28s ease;
+}
+.aula-toast.is-visible { opacity: 1; transform: none; }
+.aula-toast__dot {
+  flex: none;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #1a7f46;
+  box-shadow: 0 0 0 4px #1a7f4622;
+}
+@media (prefers-reduced-motion: reduce) {
+  .aula-toast { transition: opacity .2s ease; transform: none; }
+}

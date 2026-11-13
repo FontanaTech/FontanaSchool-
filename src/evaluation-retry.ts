@@ -1,5 +1,16 @@
 import { api, escapar, formatDate } from './http';
 import { showExcelSavingDialog } from './office/excel-saving-dialog';
+import { showAulaToast } from './aula-toast';
+
+const POLL_MIN = 15_000; // esperando reactivación: se comprueba cada 15 s
+const POLL_MAX = 120_000; // tope del retroceso ante errores de red
+const REACTIVATED_MESSAGE = 'Actividad reactivada. Ya puedes continuar';
+
+// Sin conexión no se puede comprobar la reactivación; se avisa con claridad y se reintenta al reconectar.
+const offlineMessage = (error: Error): string =>
+  typeof navigator !== 'undefined' && navigator.onLine === false
+    ? 'Sin conexión: no pudimos comprobar la reactivación. Lo intentaremos de nuevo al reconectar.'
+    : error.message;
 
 type Report = {
   name: string; activityTitle: string; activityId: string; attemptId: string; attemptNumber: number; issuedAt: string;
@@ -29,13 +40,13 @@ export function failureCertificateHtml(report: Report): string {
 }
 
 const actionText = (phase: EvaluationRetryState['phase']): string => phase === 'SELF_RETRY_AVAILABLE' ? 'Activar mi único reintento →'
-  : phase === 'SUPPORT_REQUIRED' ? 'Solicitar acompañamiento al administrador'
-  : phase === 'SUPPORT_PENDING' ? 'Consultar aprobación' : 'Volver a mi prueba →';
+  : phase === 'SUPPORT_REQUIRED' ? 'Solicitar acompañamiento'
+  : phase === 'SUPPORT_PENDING' ? 'Comprobar ahora' : 'Volver a mi prueba →';
 
 const message = (phase: EvaluationRetryState['phase']): string => phase === 'SELF_RETRY_AVAILABLE'
   ? 'Tienes un único reintento que puedes activar tú mismo, sin aprobación del administrador.'
-  : phase === 'SUPPORT_REQUIRED' ? 'Ya utilizaste tu reintento. Solicita acompañamiento para que el administrador revise tu caso y reactive esta prueba.'
-  : phase === 'SUPPORT_PENDING' ? 'Esperando aprobación del administrador. La solicitud corresponde solo a esta prueba; tus módulos aprobados se conservan.'
+  : phase === 'SUPPORT_REQUIRED' ? 'Ya utilizaste tu reintento. Para continuar, ponte en contacto con la persona encargada de tu formación y solicita la reactivación de esta actividad. Cuando se autorice, te llevaremos automáticamente al apartado habilitado.'
+  : phase === 'SUPPORT_PENDING' ? 'Para continuar, ponte en contacto con la persona encargada de tu formación y solicita la reactivación de esta actividad. Cuando se autorice, te llevaremos automáticamente al apartado habilitado. La solicitud corresponde solo a esta prueba; tus módulos aprobados se conservan.'
   : 'Tu evaluación está disponible. Continúa desde su pantalla de inicio.';
 
 export function bindEvaluationRetry(box: HTMLElement, onReady: () => void): void {
@@ -45,10 +56,38 @@ export function bindEvaluationRetry(box: HTMLElement, onReady: () => void): void
   let dialog: HTMLDialogElement | null = null;
   let timer: ReturnType<typeof setTimeout> | undefined;
   let note = '';
+  let pollDelay = POLL_MIN;
+  let polling = false;
+  let rechecksBound = false;
   const url = `/training/evaluation-retry/${encodeURIComponent(activityId)}`;
+
+  // Mientras esperamos la reactivación, se vuelve a comprobar al recuperar el foco, la visibilidad o la conexión;
+  // en pausa mientras la pestaña está oculta. Los detectores se retiran solos cuando el aviso deja el DOM.
+  const onRecheck = (): void => {
+    if (!box.isConnected) { teardownRechecks(); return; }
+    if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
+    if (state?.phase !== 'SUPPORT_PENDING') return;
+    pollDelay = POLL_MIN;
+    void refresh();
+  };
+  function bindRechecks(): void {
+    if (rechecksBound || typeof window === 'undefined') return;
+    rechecksBound = true;
+    window.addEventListener('focus', onRecheck);
+    window.addEventListener('online', onRecheck);
+    document.addEventListener('visibilitychange', onRecheck);
+  }
+  function teardownRechecks(): void {
+    if (!rechecksBound || typeof window === 'undefined') return;
+    rechecksBound = false;
+    window.removeEventListener('focus', onRecheck);
+    window.removeEventListener('online', onRecheck);
+    document.removeEventListener('visibilitychange', onRecheck);
+  }
 
   function body(modal: boolean): string {
     return `${modal && state.report ? failureCertificateHtml(state.report) : '<strong>Esta evaluación necesita refuerzo</strong>'}
+      ${state.phase === 'SUPPORT_PENDING' ? '<p class="eval-retry-status"><span class="eval-chip eval-chip--warn">Esperando reactivación</span></p>' : ''}
       <p class="eval-retry-message" role="status">${message(state.phase)}</p>
       ${state.rejectionReason ? `<p class="eval-notice__error">El administrador no aprobó la solicitud: ${escapar(state.rejectionReason)}</p>` : ''}
       ${state.report?.recommendations.length ? `<details><summary>Qué puedes reforzar</summary><ul>${state.report.recommendations.map(r => `<li>${escapar(r)}</li>`).join('')}</ul></details>` : ''}
@@ -79,15 +118,27 @@ export function bindEvaluationRetry(box: HTMLElement, onReady: () => void): void
     dialog.showModal();
     dialog.querySelector<HTMLElement>('[data-retry-action]')?.focus();
   }
+  // Reprograma la siguiente comprobación mientras seguimos esperando la reactivación.
+  const scheduleNext = (): void => { clearTimeout(timer); timer = setTimeout(() => { if (box.isConnected) void refresh(); }, pollDelay); };
+
   async function refresh(autoShow = false): Promise<void> {
+    if (polling) return; // sin peticiones superpuestas
+    if (!box.isConnected) { teardownRechecks(); return; }
+    polling = true;
     clearTimeout(timer);
     try {
       const data = (await api<{ data: EvaluationRetryState }>(url)).data;
-      if (!box.isConnected) return;
+      if (!box.isConnected) { teardownRechecks(); return; }
+      pollDelay = POLL_MIN; // respuesta correcta: se vuelve al ritmo normal
       const wasPending = state?.phase === 'SUPPORT_PENDING';
       state = data;
-      if (state.phase === 'PASSED') { dialog?.close(); onReady(); return; }
-      if (wasPending && ['RETRY_READY', 'IN_PROGRESS', 'PASSED'].includes(state.phase)) { dialog?.close(); onReady(); return; }
+      // Karol reactivó la actividad: aviso breve y entrada a la prueba, sin congelar ni mostrar un éxito falso.
+      if (wasPending && ['RETRY_READY', 'IN_PROGRESS', 'PASSED'].includes(state.phase)) {
+        dialog?.close(); teardownRechecks();
+        try { await showAulaToast(REACTIVATED_MESSAGE); } catch { /* el aviso no debe impedir el avance */ }
+        onReady(); return;
+      }
+      if (state.phase === 'PASSED') { dialog?.close(); teardownRechecks(); onReady(); return; }
       paint();
       const seenKey = `fontana-evaluation-result:${state.report?.attemptId}`;
       let seen = false;
@@ -96,9 +147,9 @@ export function bindEvaluationRetry(box: HTMLElement, onReady: () => void): void
         openDialog();
         try { sessionStorage.setItem(seenKey, 'seen'); } catch { /* El aviso sigue disponible en el resultado. */ }
       }
-      if (state.phase === 'SUPPORT_PENDING') timer = setTimeout(() => { if (box.isConnected) void refresh(); }, 15_000);
+      if (state.phase === 'SUPPORT_PENDING') { bindRechecks(); scheduleNext(); } else teardownRechecks();
     } catch (error) {
-      if (!box.isConnected) return;
+      if (!box.isConnected) { teardownRechecks(); return; }
       if (!state) {
         box.hidden = false;
         box.innerHTML = `<p role="alert">${escapar((error as Error).message)}</p><button type="button" class="secondary-action" data-load-retry>Volver a consultar</button>`;
@@ -106,9 +157,12 @@ export function bindEvaluationRetry(box: HTMLElement, onReady: () => void): void
       } else {
         const host = dialog?.open ? dialog : box;
         const feedback = host.querySelector<HTMLElement>('[data-retry-error]')!;
-        feedback.hidden = false; feedback.textContent = (error as Error).message;
-        if (state.phase === 'SUPPORT_PENDING') timer = setTimeout(() => { if (box.isConnected) void refresh(); }, 15_000);
+        feedback.hidden = false; feedback.textContent = offlineMessage(error as Error);
+        // Error de red mientras esperamos: se retrocede y se reintenta; nunca se interpreta como aprobación.
+        if (state.phase === 'SUPPORT_PENDING') { pollDelay = Math.min(pollDelay * 2, POLL_MAX); bindRechecks(); scheduleNext(); }
       }
+    } finally {
+      polling = false;
     }
   }
   async function act(host: HTMLElement): Promise<void> {
