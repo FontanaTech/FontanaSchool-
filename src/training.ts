@@ -277,10 +277,14 @@ function showAlbumComplete(): void {
   // Al terminar el recorrido aparece SOLO la ventana emergente (la sección inline queda para el cierre).
   if (!albumCompleteDialog.open) albumCompleteDialog.showModal();
 }
-// Al volver, lo que el asesor ya completó queda desbloqueado: los bloqueos solo aplican la primera vez.
+// Al volver, lo que el asesor ya completó queda desbloqueado, SIN abrir lo que todavía no ha recorrido: el apartado
+// se hace paso a paso y no se puede saltar ninguna parte. Solo se reabre todo el contenido cuando ya llegó a los
+// principios (método), que es el último paso antes del álbum: haberlos alcanzado implica que pasó por reglas y
+// seguridad. Si únicamente terminó la historia, se desbloquea solo el siguiente paso (reglas) y la cadena sigue
+// abriendo seguridad y principios de uno en uno, igual que la primera vez.
 export function restoreProgress(progress: { historia: boolean; metodo: boolean; completada: boolean }): void {
-  const historia = progress.historia || progress.metodo || progress.completada;
-  if (historia) {
+  const contenidoCompleto = progress.metodo || progress.completada;
+  if (progress.historia || contenidoCompleto) {
     savedProgress.historia = true;
     storyCards.forEach((_, index) => openStory(index));
     highestUnlockedStory = storyCards.length - 1;
@@ -288,11 +292,16 @@ export function restoreProgress(progress: { historia: boolean; metodo: boolean; 
     storyCompleted = true;
     storyUnlocked = true;
     finishStory.textContent = 'Continuar con las reglas y políticas →';
-    // Quien ya terminó la historia no repite el orden: todo queda abierto para repasar.
-    [policiesTab, securityTab, principlesTab].forEach(unlockTab);
-    document.querySelectorAll<HTMLButtonElement>('.security-continue').forEach((button) => { button.hidden = false; });
+    if (contenidoCompleto) {
+      // Ya recorrió todo el contenido: queda abierto para repasar sin repetir el orden.
+      [policiesTab, securityTab, principlesTab].forEach(unlockTab);
+      document.querySelectorAll<HTMLButtonElement>('.security-continue').forEach((button) => { button.hidden = false; });
+    } else {
+      // Solo terminó la historia: se abre el siguiente paso y la cadena sigue desbloqueando seguridad y principios.
+      unlockTab(policiesTab);
+    }
   }
-  if (progress.metodo || progress.completada) {
+  if (contenidoCompleto) {
     savedProgress.metodo = true;
     principlesReviewed = true;
     principlesProgress.textContent = 'Ya completaste los principios de trabajo.';
